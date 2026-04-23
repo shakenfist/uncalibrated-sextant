@@ -12,8 +12,7 @@ repo root. For pre-push audits of our own work see `PUSH-TEMPLATE.md`.
 
 | Date | Plan | Intent | Status | Phases |
 |------|------|--------|--------|--------|
-
-_No master plans yet._
+| 2026-04-24 | [First playable](PLAN-first-playable.md) | Bootable UEFI binary via `make qemu` that plays the opening boot sequence in human-play mode, to prove concept and build pipeline | Not started | [1. Skeleton](PLAN-first-playable-phase-01-skeleton.md), [2. Build](PLAN-first-playable-phase-02-build.md), [3. Style](PLAN-first-playable-phase-03-style.md), [4. Renderer](PLAN-first-playable-phase-04-renderer.md), [5. Boot sequence](PLAN-first-playable-phase-05-boot-sequence.md), [6. Packaging](PLAN-first-playable-phase-06-packaging.md) |
 
 ## Standalone plans
 

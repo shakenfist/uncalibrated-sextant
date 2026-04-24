@@ -63,6 +63,18 @@ The binary does not yet need to *run* under QEMU — Phase 2 wires
 up `make qemu`. Phase 1 ends at "builds and is the right file
 type".
 
+**Build runs inside Docker from the outset.** This plan was
+amended after Step 1 research established that developer hosts
+should not be required to install Rust natively (the project
+owner maintains several Rust projects at different toolchain
+versions and keeps hosts clean). This matches the workspace's
+existing ryll / instar / imago pattern. Phase 1 therefore
+introduces a minimal Docker image carrying the pinned toolchain
+and the `x86_64-unknown-uefi` target, plus a tiny Makefile with
+`build` and `clean` targets. Phase 2 extends both the image
+(QEMU, OVMF, ESP image tools) and the Makefile (`qemu`,
+`release`). No host Rust toolchain is required at any step.
+
 The master plan calls for "GOP text output" in its Phase 1 sketch;
 to clarify: this phase uses the **Simple Text Output Protocol**
 (`SIMPLE_TEXT_OUTPUT_PROTOCOL`), which is the trivial text
@@ -72,24 +84,41 @@ Phase 4.
 
 ## Open questions
 
-These should be resolved by Step 1 below and recorded in the
-phase plan's *Bugs fixed during this work* or as a short note in
-the commit message.
-
-- **`uefi` crate version.** Pin a specific current release rather
-  than a floating range. Check `https://crates.io/crates/uefi`
-  for the latest stable. The API between 0.2x and 0.3x had
-  significant churn (notably around `SystemTable<Boot>` vs the
-  globals-based API and the `#[uefi::entry]` signature); pick one
-  version and stick with it for the whole project until there's a
-  reason to upgrade. Record the decision and the API generation
-  in a short comment at the top of `src/main.rs`.
-- **Rust toolchain.** Confirm stable Rust can target
-  `x86_64-unknown-uefi` without any `-Z` flags. The target has
-  been Tier 2 and stable-accessible for a while; the `build-std`
-  feature (which needs nightly) should *not* be required. If it
-  turns out to be needed for the `uefi` crate version we pick,
-  revisit the version choice rather than adopting nightly.
+- **`uefi` crate version.** *Resolved by Step 1.* Pin exactly to
+  `0.37.0` (published 2026-03-23; MSRV 1.81). Not `^0.37` — the
+  crate releases frequently and we want the version stable for
+  the whole project until there's a reason to bump. Entry-point
+  API is the *new* globals-based form: argumentless
+  `#[entry] fn main() -> Status` with `uefi::helpers::init()` and
+  services accessed via `uefi::system::with_stdout(...)`,
+  `uefi::boot::...`, `uefi::runtime::...`. The legacy
+  `SystemTable<Boot>` two-argument signature is gone and many
+  older tutorials are stale on this point — check the top of
+  `src/main.rs` in review to make sure the new form is used.
+- **`uefi` crate features.** *Resolved by Step 1.* Use
+  `features = ["panic_handler", "alloc", "global_allocator"]`.
+  The plan previously sketched `["panic_handler", "alloc"]`;
+  that's incomplete. `alloc` gives the crate surface for heap
+  collections, but `global_allocator` is now a separate opt-in
+  feature that actually installs a UEFI-boot-services allocator
+  so `Box` / `Vec` / `String` work at runtime.
+- **Rust toolchain.** *Resolved by Step 1.* Pin `1.86.0` (stable,
+  released 2025-04-03) in `rust-toolchain.toml`, with
+  `targets = ["x86_64-unknown-uefi"]` and
+  `components = ["rust-src", "rustfmt", "clippy"]`. A few months
+  old, above the crate's 1.81 MSRV, and avoids the bleeding edge
+  that sometimes regresses. `x86_64-unknown-uefi` is Tier 2
+  without host tools but builds cleanly on stable with just
+  `rustup target add x86_64-unknown-uefi` — no `-Z build-std`, no
+  nightly.
+- **Docker base image.** Two plausible bases: the official
+  `rust:1.86-slim` image (rustup is already present; just run
+  `rustup component add` / `rustup target add` at build time) or
+  a Debian/Alpine base with rustup installed by hand. Prefer
+  `rust:1.86-slim` for simplicity unless a concrete reason rules
+  it out. Decide at Step 2. The image should be as small as
+  reasonably possible since Phase 2 will extend it with QEMU and
+  OVMF.
 - **Workspace vs single crate.** Single crate is sufficient for
   Phase 1. Later phases may introduce a workspace if we extract
   the renderer or scene code into separate crates, but we do not
@@ -104,44 +133,35 @@ the commit message.
 
 | Step | Effort | Model  | Isolation | Brief for sub-agent |
 |------|--------|--------|-----------|---------------------|
-| 1    | medium | opus   | none      | See Step 1 below. Research and record, no file changes. |
-| 2    | medium | sonnet | none      | See Step 2 below. Create Cargo scaffolding and source. |
-| 3    | low    | sonnet | none      | See Step 3 below. Build, verify `file(1)` output, commit. |
-| 4    | low    | sonnet | none      | See Step 4 below. Update docs (ARCHITECTURE.md, AGENTS.md). |
+| 1    | medium | opus   | none      | *Complete.* See research report summarised above in *Open questions*. |
+| 2    | medium | sonnet | none      | See Step 2 below. Create Cargo scaffolding, Docker wrapper, and a minimal Makefile. |
+| 3    | low    | sonnet | none      | See Step 3 below. Run `make build` inside Docker, verify `file(1)` output, commit. |
+| 4    | low    | sonnet | none      | See Step 4 below. Update docs (ARCHITECTURE.md, AGENTS.md, README.md). |
 
-Note on effort and models: Step 1 is opus/medium because the
-decisions made here shape every later phase and involve cross-
+Note on effort and models: Step 1 was opus/medium because the
+decisions made there shape every later phase and involved cross-
 referencing crates.io, release notes, and the target's current
 stability status. Steps 2-4 are well-briefed enough for sonnet.
 
-### Step 1 — research and decide versions
+### Step 1 — research and decide versions (complete)
 
-**What to produce:** a short findings note (in the commit message
-for Step 2, or as an inline comment in `Cargo.toml`) that records:
+Executed 2026-04-24 by an opus/medium sub-agent. Findings are
+folded into *Open questions* above. Summary:
 
-- The pinned `uefi` crate version (e.g. `0.35`, whatever current is)
-- The chosen Rust toolchain version (e.g. `1.85.0` — pick a recent
-  stable, but not the absolute latest, to give a bit of CI runway)
-- Confirmation that `x86_64-unknown-uefi` is a stable Tier 2 target
-  and does not require nightly or `build-std`
-- Whether the `uefi` crate's current release uses the older
-  `SystemTable<Boot>` entry-point signature or the newer
-  globals-based API, since `src/main.rs` will be shaped by that
+- `uefi` crate pinned to `0.37.0`
+- API generation: new / argumentless / globals-based
+- Features: `["panic_handler", "alloc", "global_allocator"]`
+- Rust toolchain pinned to `1.86.0` stable
+- `x86_64-unknown-uefi` is Tier 2 without host tools; builds on
+  stable without `-Z build-std`
+- No host Rust toolchain should be required — Docker wraps the
+  build from Phase 1 onward
 
-**How:** `curl -s https://crates.io/api/v1/crates/uefi | jq
-.crate.newest_version` (and/or WebFetch the crates.io page),
-then skim the crate README on docs.rs for the current API
-idiom. Also check the Rust target list:
-`rustc --print target-list | grep uefi` confirms stable presence.
+### Step 2 — scaffold Cargo, Docker wrapper, Makefile, and source
 
-**Output:** a short paragraph in the management session (not
-committed anywhere) with the pinned versions and any surprises.
-No file changes in this step.
-
-### Step 2 — scaffold Cargo and source
-
-Create the following files. Exact contents are starting templates;
-adjust to whatever the Step 1 research determined is current API.
+Create the following files. The versions below reflect the Step 1
+research; use them as-is unless the sub-agent discovers a specific
+reason to deviate.
 
 **`Cargo.toml`**
 
@@ -155,7 +175,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-uefi = { version = "<pinned-from-step-1>", features = ["panic_handler", "alloc"] }
+uefi = { version = "=0.37.0", features = ["panic_handler", "alloc", "global_allocator"] }
 
 [profile.release]
 panic = "abort"
@@ -166,6 +186,10 @@ opt-level = "s"
 [profile.dev]
 panic = "abort"
 ```
+
+Note the `=0.37.0` (exact) rather than `0.37.0` (caret by default)
+— the `uefi` crate releases frequently and we want the version
+stable for the whole project until there's a reason to bump.
 
 **`.cargo/config.toml`**
 
@@ -178,8 +202,8 @@ target = "x86_64-unknown-uefi"
 
 ```toml
 [toolchain]
-channel = "<pinned-from-step-1>"
-components = ["rustfmt", "clippy"]
+channel = "1.86.0"
+components = ["rust-src", "rustfmt", "clippy"]
 targets = ["x86_64-unknown-uefi"]
 profile = "minimal"
 ```
@@ -191,6 +215,70 @@ profile = "minimal"
 ```
 
 (Do not ignore `Cargo.lock` — this is a binary project.)
+
+**`Dockerfile`** (at repo root)
+
+```dockerfile
+FROM rust:1.86-slim AS build
+
+RUN rustup component add rust-src rustfmt clippy \
+ && rustup target add x86_64-unknown-uefi
+
+WORKDIR /work
+```
+
+Keep it minimal. Phase 2 will extend this image with QEMU, OVMF,
+and ESP image tooling; do not anticipate those here. `rust:1.86-slim`
+is a small Debian-based official image that already carries rustup
+and the 1.86.0 toolchain.
+
+**`scripts/build.sh`** (make executable)
+
+```bash
+#!/usr/bin/env bash
+# Build the uncalibrated-sextant UEFI binary inside Docker.
+set -euo pipefail
+
+IMAGE_TAG="uncalibrated-sextant-build:1.86.0"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Build the image if it doesn't exist. Cheap to re-run; docker
+# build is a no-op if the layer cache is already warm.
+docker build -t "$IMAGE_TAG" "$REPO_ROOT"
+
+# Run cargo build inside the container. Mount the source in, mount
+# a named volume for target/ so host file ownership stays clean
+# and incremental builds are preserved across invocations.
+docker run --rm \
+    -v "$REPO_ROOT":/work \
+    -v uncalibrated-sextant-target:/work/target \
+    -w /work \
+    "$IMAGE_TAG" \
+    cargo build --release
+```
+
+Bind-mounting the source read-write and using a named volume for
+`target/` avoids the "files owned by root" trap that catches
+naive Docker-wrapped Rust builds.
+
+**`Makefile`** (at repo root — minimal in Phase 1; Phase 2 extends)
+
+```makefile
+.PHONY: build clean
+
+BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
+
+build:
+	./scripts/build.sh
+
+clean:
+	docker volume rm -f uncalibrated-sextant-target
+	rm -rf target
+```
+
+The `clean` target removes both the host-side `target/` (in case
+anything lands there) and the named Docker volume where the real
+build output lives.
 
 **`src/main.rs`** (shape; adjust to current `uefi` crate API)
 
@@ -219,30 +307,55 @@ fn main() -> Status {
 }
 ```
 
-The exact lines inside `main` depend on whether the current `uefi`
-crate gives you `uefi::system::with_stdout` (newer API) or an
-explicit `SystemTable<Boot>` argument (older API). Either way:
+Use the new globals-based API (uefi 0.37):
 
-1. Clear the screen (`ST::stdout().clear()` or equivalent).
-2. Write `"Hello from Uncalibrated Sextant\r\n"`.
-3. Block on a keypress via `stdin().read_key()` in a loop, calling
-   `boot::stall(10_000)` (10 ms) between polls, until a key is
-   returned.
-4. Return `Status::SUCCESS`.
+1. Call `uefi::helpers::init().unwrap()` first thing.
+2. Clear the screen: `uefi::system::with_stdout(|stdout|
+   stdout.clear().unwrap())`.
+3. Write the banner: `uefi::system::with_stdout(|stdout|
+   stdout.output_string(cstr16!("Hello from Uncalibrated Sextant\r\n")).unwrap())`.
+4. Block on a keypress via `uefi::system::with_stdin(|stdin|
+   stdin.read_key())` in a loop, sleeping via
+   `uefi::boot::stall(10_000)` (10 ms) between polls until a
+   key is returned.
+5. Return `Status::SUCCESS`.
+
+The sub-agent may need to consult the uefi 0.37 docs for exact
+module paths and macro names — these helpers change name slightly
+between versions and the above list is approximate. The specific
+entry point shape is what's load-bearing; the exact helper names
+are not.
 
 ### Step 3 — build and verify
 
 Run:
 
 ```
-cargo build --release
-file target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
+make build
 ```
 
-Expected output from `file`:
+This invokes `scripts/build.sh`, which builds the Docker image
+(cache-friendly; no-op on repeat) and runs `cargo build --release`
+inside the container. The output path is the same as a native
+build because the container mounts the host repo at `/work` and a
+named volume at `/work/target`, so the `.efi` ends up at:
 
 ```
-target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi:
+target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
+```
+
+…accessible via the `target` named volume. To surface it for
+inspection with `file`:
+
+```
+docker run --rm -v uncalibrated-sextant-target:/target alpine \
+    sh -c 'apk add --no-cache file >/dev/null && \
+           file /target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi'
+```
+
+Expected output (last line):
+
+```
     PE32+ executable (EFI application) x86-64, for MS Windows
 ```
 
@@ -251,7 +364,9 @@ PE32+ format with Windows binaries.
 
 If `file` reports anything else (ELF, shared object, plain PE32
 without the +64), the build configuration is wrong; debug before
-proceeding.
+proceeding. Alternatively, Phase 2 will add a `Makefile` target
+that copies the built binary out to a host-visible path; for now
+the one-liner above is fine.
 
 Once verified, commit the work. Commit message should:
 
@@ -271,13 +386,15 @@ Update:
 - **`ARCHITECTURE.md`** — replace the "stub" note with a brief
   description of the Cargo layout now in place (single crate,
   `src/main.rs` entry, `x86_64-unknown-uefi` target, pinned `uefi`
-  crate). Keep it short; later phases will expand.
+  crate) and the Docker-based build (image, build script, minimal
+  Makefile). Keep it short; later phases will expand.
 - **`AGENTS.md`** — add a *Build commands* section with
-  `cargo build --release` as the current build command, and note
-  that `make qemu` does not yet exist (coming in Phase 2).
+  `make build` as the current build command, note the Docker
+  dependency (and that no host Rust toolchain is required), and
+  note that `make qemu` does not yet exist (coming in Phase 2).
 - **`README.md`** — add a terse *Building* section pointing at
-  `cargo build --release` and noting OVMF/QEMU are not yet
-  required (Phase 2).
+  `make build`, mention Docker as the only build-time dependency,
+  and note OVMF/QEMU are not yet required (Phase 2).
 
 Commit as a separate logical change from Step 3, or squash into
 Step 3's commit if the diff is genuinely trivial.
@@ -295,15 +412,16 @@ part of the review checklist before the phase is marked complete.
 
 Phase 1 is complete when:
 
-- [ ] `cargo build --release` succeeds on a fresh clone with the
-      pinned toolchain.
+- [ ] `make build` succeeds on a fresh clone with only Docker
+      installed on the host — no host Rust toolchain required.
 - [ ] `file` reports `PE32+ executable (EFI application) x86-64`
       on the produced binary.
 - [ ] `Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`,
-      `rust-toolchain.toml`, `.gitignore`, and `src/main.rs` are
+      `rust-toolchain.toml`, `.gitignore`, `src/main.rs`,
+      `Dockerfile`, `scripts/build.sh`, and `Makefile` are
       committed.
 - [ ] `ARCHITECTURE.md`, `AGENTS.md`, and `README.md` reference
-      the new build command.
+      the new build command and the Docker dependency.
 - [ ] `pre-commit run --all-files` is **not** expected to pass
       yet — pre-commit is Phase 3 work. Do not add a
       pre-commit config in this phase.

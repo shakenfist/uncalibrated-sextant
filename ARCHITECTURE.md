@@ -41,19 +41,67 @@ the spleen 8x16 font (BSD-2-Clause; see `LICENSES/FONT_SPLEEN.txt`)
 as a `[[u8; 16]; 128]` ASCII table generated once by
 `scripts/vendor-font.py` and committed for reproducibility.
 
-The remaining components are still planned. The intended high-level
-shape is sketched in [DESIGN.md](DESIGN.md):
+Phase 5 added the scene state machine (`src/scene.rs`), event ring
+buffer (`src/event.rs`), cursor glitch module (`src/cursor.rs`), and
+logo pipeline (`src/logo.rs`, `scripts/vendor-logo.py`). `Scene`
+drives three phases — Awaiting, Booting, Parked — in sequence.
+Awaiting and Parked blink a cursor and unblock on the first keypress.
+Booting walks a `static BOOT_SCRIPT` of `SceneStep::Telemetry` and
+`SceneStep::Line` entries, rendering each with `draw_telemetry_line`
+or `draw_line` and pausing 200 ms between lines. The parking screen
+appends its SYSTEM ONLINE prompt below the boot transcript; the
+screen is not cleared between Booting and Parked, keeping the full
+boot log visible. `Scene::draw_chrome` places the Shaken Fist logo in
+the top-right corner by calling `Renderer::draw_logo`; the logo is
+re-painted after every `renderer.clear()` call.
 
-- A `no_std` UEFI Rust binary built with the `uefi-rs` crate
-- A single in-memory ring buffer of test events (input arrivals,
-  scene state changes, channel-relevant lifecycle events)
-- A serial transport using gRPC-over-serial (pattern lifted from
-  [instar](../instar/)) feeding events outbound to Ryll and
-  accepting inbound commands
-- A renderer using GOP that draws the current scene plus a periodic
-  on-screen digest (QR or compact text) of the same ring buffer
-- Input collectors using Simple Text Input Ex (keyboard) and Simple
-  Pointer Protocol (mouse), each pushing into the ring buffer
+`CursorState` in `src/cursor.rs` implements a 1 Hz blink (500 ms on,
+500 ms off). On every sixth blink-on transition a 16-bit Fibonacci
+LFSR selects one of four broken-glyph variants — `GLYPH_MISSING_PIXEL`
+(3x3 centre hole), `GLYPH_SMEARED_EDGE` (right two columns dark),
+`GLYPH_SHIFTED_COLUMN` (whole block shifted two pixels right),
+`GLYPH_PHOSPHOR_TRAIL` (top three rows dark) — substituted in place of
+the canonical solid-block glyph. `CursorState` is shared between
+Awaiting and Parked so the LFSR and blink counter carry across
+phases.
+
+`RingBuffer<256>` in `src/event.rs` records `Event::Keypress`,
+`Event::LineRendered`, and `Event::SceneTransition` events as they
+occur, overwriting the oldest entry on overflow. The buffer is
+populated throughout Phase 5 and is intentionally dead from the
+compiler's perspective until Phase 6 adds the serial-drain code that
+reads it.
+
+The logo pipeline: `scripts/vendor-logo.py` rasterises
+`shakenfist-logo-small.svg` via ImageMagick at 300 DPI, resizes to
+128x128, thresholds at 50% grey, then flips 2% of pixels using a PRNG
+seeded to `0x5EAFED` for reproducibility, and emits `src/logo.rs` as
+a row-major packed-bit `[u8; 2048]` const. `Renderer::draw_logo` tiles
+this bitmap as an 8x16 glyph grid, using the same phosphor-green
+palette as body text.
+
+`MARGIN_X = MARGIN_Y = 16` overscan margins are applied as a
+renderer-level pixel offset added to every `draw_glyph` call, keeping
+content clear of scan-line overshoot at the screen edges.
+
+The narrator-leak parentheticals described in DESIGN.md's
+`Voice: unreliable narration leaks` section are not present in the
+default boot sequence. This is deliberate: they are deferred pending
+a diagnostic-mode mechanism that will gate them in a future phase.
+
+The remaining components still to be built:
+
+- **Serial transport** — gRPC-over-serial (pattern from
+  [instar](../instar/)) feeding the ring buffer outbound to Ryll
+  and accepting inbound commands. Phase 6 work.
+- **Ring buffer drain** — Phase 6 will wire `RingBuffer::len` / pop
+  into the serial transport. The buffer and its population code
+  already exist.
+- **Simple Pointer Protocol** — mouse / pointer input collector
+  pushing into the ring buffer. Deferred beyond Phase 6; the Booting
+  handshake currently requires a keypress only.
+- **On-screen digest** — QR or compact-text rendering of buffered
+  events. Future phase.
 
 Style enforcement is declared in `.pre-commit-config.yaml` and
 executed by `scripts/check-rust.sh`, which reuses the Phase 1 Docker
@@ -62,6 +110,3 @@ never require a host toolchain. The GitHub Actions workflow at
 `.github/workflows/pre-commit.yml` runs all non-Rust hooks (trailing
 whitespace, YAML, shellcheck, secret scanning) on every push and pull
 request; the `rust-check` hook is skipped there and enforced locally.
-
-This file will be expanded with concrete module/crate boundaries
-once we commit to an implementation skeleton.

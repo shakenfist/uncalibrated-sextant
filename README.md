@@ -12,12 +12,15 @@ have to verify before you can trust them.
 
 ## Status
 
-Phase 4 landed. The binary now renders via GOP rather than
-SimpleTextOutput, using a vendored spleen 8x16 bitmap font and a
-phosphor-green-on-black palette. Release artifacts in raw and qcow2
-formats are produced and verified headless. See [DESIGN.md](DESIGN.md)
-for the channel mapping, two-channel test architecture, and aesthetic
-direction.
+Phase 5 landed. The binary now runs a full scene state machine:
+AWAITING OPERATOR screen with blinking cursor, a scripted boot
+sequence matching the DESIGN.md aesthetic (including deliberate
+subsystem failures), and a SYSTEM ONLINE parking screen that appends
+to the boot transcript rather than clearing it. The Shaken Fist logo
+appears in the top-right corner rendered as a tiled 8x16 glyph grid;
+the cursor includes LFSR-driven glitch substitution for period-correct
+display wear. See [DESIGN.md](DESIGN.md) for the channel mapping,
+two-channel test architecture, and aesthetic direction.
 
 ## Building and running
 

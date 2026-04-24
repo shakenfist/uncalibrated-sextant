@@ -128,7 +128,7 @@ resolved by the phase in which they become relevant.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Cargo / `no_std` UEFI skeleton and GOP "hello" | PLAN-first-playable-phase-01-skeleton.md | Not started |
+| 1. Cargo / `no_std` UEFI skeleton and Simple Text Output "hello" | PLAN-first-playable-phase-01-skeleton.md | Complete (commits 7712239, 8a0442d) |
 | 2. Build tooling and `make qemu` | PLAN-first-playable-phase-02-build.md | Not started |
 | 3. Pre-commit, style, and minimal CI | PLAN-first-playable-phase-03-style.md | Not started |
 | 4. Renderer foundation — framebuffer, font, per-glyph blit, palette | PLAN-first-playable-phase-04-renderer.md | Not started |

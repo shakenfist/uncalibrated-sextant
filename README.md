@@ -12,24 +12,32 @@ have to verify before you can trust them.
 
 ## Status
 
-Phase 5 landed. The binary now runs a full scene state machine:
-AWAITING OPERATOR screen with blinking cursor, a scripted boot
-sequence matching the DESIGN.md aesthetic (including deliberate
-subsystem failures), and a SYSTEM ONLINE parking screen that appends
-to the boot transcript rather than clearing it. The Shaken Fist logo
-appears in the top-right corner rendered as a tiled 8x16 glyph grid;
-the cursor includes LFSR-driven glitch substitution for period-correct
-display wear. See [DESIGN.md](DESIGN.md) for the channel mapping,
+The first-playable milestone has landed. The binary runs the full
+scene state machine — AWAITING OPERATOR screen, a scripted boot
+sequence, and a SYSTEM ONLINE parking screen — with blinking cursor,
+LFSR-driven glitch substitution, and the Shaken Fist logo rendered
+as a tiled 8x16 glyph grid in the top-right corner. On final
+shutdown, the event ring buffer is drained to the UEFI Serial
+protocol as plain text, groundwork for the eventual gRPC-over-serial
+transport. See [DESIGN.md](DESIGN.md) for the channel mapping,
 two-channel test architecture, and aesthetic direction.
+
+## What it looks like
+
+![Parking-screen capture from the first-playable build](docs/images/boot-sequence.png)
+
+The parking-screen frame after a keypress through the boot
+sequence, captured by `make screenshot` and regenerated on demand.
 
 ## Building and running
 
 ```
-make qemu       # build, assemble ESP, launch interactive QEMU window
-make release    # produce dist/uncalibrated-sextant.{img,qcow2}
+make qemu            # build, assemble ESP, launch interactive QEMU window
+make release         # produce dist/uncalibrated-sextant.{img,qcow2}
 make release-verify  # headless boot check of both release artifacts
-make build      # build the UEFI binary only (Docker, no host toolchain)
-make clean      # remove dist/, target/, and the named Docker volume
+make screenshot      # regenerate docs/images/boot-sequence.png via QMP
+make build           # build the UEFI binary only (Docker, no host toolchain)
+make clean           # remove dist/, target/, and the named Docker volume
 ```
 
 `make qemu` is the primary interactive target. It opens a GTK window;

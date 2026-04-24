@@ -67,10 +67,9 @@ phases.
 
 `RingBuffer<256>` in `src/event.rs` records `Event::Keypress`,
 `Event::LineRendered`, and `Event::SceneTransition` events as they
-occur, overwriting the oldest entry on overflow. The buffer is
-populated throughout Phase 5 and is intentionally dead from the
-compiler's perspective until Phase 6 adds the serial-drain code that
-reads it.
+occur, overwriting the oldest entry on overflow. `RingBuffer::iter`
+yields events in chronological order; `Phase::tag` returns stable
+lowercase phase names for serialised output.
 
 The logo pipeline: `scripts/vendor-logo.py` rasterises
 `shakenfist-logo-small.svg` via ImageMagick at 300 DPI, resizes to
@@ -89,17 +88,44 @@ The narrator-leak parentheticals described in DESIGN.md's
 default boot sequence. This is deliberate: they are deferred pending
 a diagnostic-mode mechanism that will gate them in a future phase.
 
+Phase 6 added `src/serial.rs` — two Serial-protocol writers sharing a
+`with_serial` helper that briefly opens
+`uefi::proto::console::serial::Serial` via
+`open_protocol_exclusive`, hands it to a closure, and drops the
+handle on exit. `write_startup_banner` emits a single
+`Hello from Uncalibrated Sextant` line at `main` entry; the
+release-verify harness greps for this to confirm the binary reached
+its entry point. `drain` walks the scene's ring buffer with
+`RingBuffer::iter` and writes one CRLF-terminated line per event
+(`t=<ms> type=<keypress|line|transition> ...`) with stable
+lowercase tags so a future Ryll-side parser can match literally. The
+drain is called immediately before `uefi::runtime::reset`, so it
+fires only after the operator has advanced past the parking screen.
+If no Serial protocol is present (e.g. QEMU invoked without a
+`-serial` backend), both writers are silent no-ops and the scene
+still shuts down cleanly.
+
+Phase 6 also added `scripts/screenshot.sh` and a `make screenshot`
+target. The script boots the ESP image with `-display none` and a
+QMP Unix socket, waits for the startup banner in the serial log,
+sends a synthetic space keypress via QMP `send-key` to advance
+AWAITING into the boot sequence, waits for the parking screen to
+settle, then issues QMP `screendump` with `format=png` directly to
+`docs/images/boot-sequence.png`. A second synthetic keypress
+releases the parking screen so the drain runs and the script can
+confirm `type=` lines are present in the serial log — the script
+fails if the drain produced nothing, making it a full end-to-end
+smoke test.
+
 The remaining components still to be built:
 
-- **Serial transport** — gRPC-over-serial (pattern from
-  [instar](../instar/)) feeding the ring buffer outbound to Ryll
-  and accepting inbound commands. Phase 6 work.
-- **Ring buffer drain** — Phase 6 will wire `RingBuffer::len` / pop
-  into the serial transport. The buffer and its population code
-  already exist.
+- **gRPC-over-serial transport** — structured Ryll-facing event
+  channel (pattern from [instar](../instar/)). The current plain-text
+  drain is groundwork; the real transport, inbound commands, and
+  streaming transmission during the scene are all future work.
 - **Simple Pointer Protocol** — mouse / pointer input collector
-  pushing into the ring buffer. Deferred beyond Phase 6; the Booting
-  handshake currently requires a keypress only.
+  pushing into the ring buffer. Deferred; the Booting handshake
+  currently requires a keypress only.
 - **On-screen digest** — QR or compact-text rendering of buffered
   events. Future phase.
 

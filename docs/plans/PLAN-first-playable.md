@@ -132,8 +132,8 @@ resolved by the phase in which they become relevant.
 | 2. Build tooling and `make qemu` | PLAN-first-playable-phase-02-build.md | Complete (commits 9ee4c21, 98705cb, d3bc0ca, da7f64d) |
 | 3. Pre-commit, style, and minimal CI | PLAN-first-playable-phase-03-style.md | Complete (commits b5cebc5, f2c4ad3, 4097c5e) |
 | 4. Renderer foundation — framebuffer, font, per-glyph blit, palette | PLAN-first-playable-phase-04-renderer.md | Complete (commits eeb6503, 3958fec) |
-| 5. Boot sequence scene — AWAITING, telemetry, narrator leaks, scruff | PLAN-first-playable-phase-05-boot-sequence.md | Not started |
-| 6. Packaging, screenshot, and documentation polish | PLAN-first-playable-phase-06-packaging.md | Not started |
+| 5. Boot sequence scene — AWAITING, telemetry, narrator leaks, scruff | PLAN-first-playable-phase-05-boot-sequence.md | Complete (commits e46dcf7, d381891) |
+| 6. Packaging, screenshot, and documentation polish | PLAN-first-playable-phase-06-packaging.md | Complete (commits 8d0fbb1, 3880b09, 510d443) |
 
 ### Phase 1 sketch — Cargo `no_std` UEFI skeleton
 
@@ -290,28 +290,29 @@ phase-specific notes:
 
 ### Success criteria
 
-We will know this plan has been successfully implemented
-because:
+Final status for each criterion:
 
-- `make qemu` on a fresh clone (with OVMF installed) opens
-  a QEMU window, the binary boots, the AWAITING OPERATOR
-  screen is visible, a keypress starts the boot sequence,
-  and the boot sequence plays through per `DESIGN.md` with
-  narrator leaks and the character-ROM cursor glitch
-  present (scanline overlay if Phase 5 reached its stretch,
-  otherwise deferred per *Future work*).
-- `make release` produces at least one bootable artifact
-  (raw `.img` or `.qcow2`) that boots the same way under
-  a fresh QEMU invocation.
-- `pre-commit run --all-files` passes on a clean tree.
-- `README.md` contains a screenshot of the running boot
-  sequence, and its run-instructions section describes the
-  commands accurately.
-- `ARCHITECTURE.md` and `AGENTS.md` describe the modules
-  and build commands that now exist.
-- The aesthetic and voice match the guidance in
-  `DESIGN.md` well enough that we decide the concept is
-  worth further investment.
+- [x] `make qemu` on a fresh clone (with OVMF installed) opens
+  a QEMU window, the binary boots, AWAITING OPERATOR is
+  visible, a keypress starts the boot sequence, and it plays
+  through per DESIGN.md with the character-ROM cursor glitch
+  present. Narrator leaks are deliberately deferred pending a
+  diagnostic-mode mechanism (see ARCHITECTURE.md). Scanline
+  overlay remains Future work per the original stretch
+  scoping.
+- [x] `make release` produces `dist/uncalibrated-sextant.img`
+  and `dist/uncalibrated-sextant.qcow2`; `make release-verify`
+  boots each headless and confirms the startup banner.
+- [x] `pre-commit run --all-files` passes on a clean tree.
+- [x] `README.md` embeds `docs/images/boot-sequence.png` (a
+  parking-screen capture) and its run-instructions section
+  lists every current `make` target.
+- [x] `ARCHITECTURE.md` and `AGENTS.md` describe the renderer,
+  scene state machine, event ring buffer, cursor state, logo
+  pipeline, serial drain, and screenshot pipeline.
+- [x] The aesthetic and voice match DESIGN.md closely enough
+  that subsequent milestone work is warranted; concept
+  validated.
 
 ### Future work
 

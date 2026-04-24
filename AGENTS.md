@@ -45,21 +45,22 @@ invokes directly.
 2. [DESIGN.md](DESIGN.md) — channel mapping table, two-channel test
    architecture, design principles, aesthetic direction, open
    questions
-3. [ARCHITECTURE.md](ARCHITECTURE.md) — implementation shape (stub
-   until code lands)
+3. [ARCHITECTURE.md](ARCHITECTURE.md) — implementation shape
+4. `src/renderer/mod.rs` — GOP renderer module of record; owns
+   `ScopedProtocol<GraphicsOutput>` and implements per-glyph BitBlt
+   and dot-leader telemetry layout
 
 ## Current phase
 
-Phase 3 landed. The crate builds to a valid PE32+ UEFI binary that
-boots under QEMU with OVMF, prints a two-line banner, waits for a key
-via `wait_for_event`, then shuts down the platform via ACPI rather
-than returning to the firmware boot manager. Release artifacts (raw
-and qcow2) are produced and verified headless. Style enforcement via
-pre-commit and `scripts/check-rust.sh` is now the gate for all
-contributions; install the hooks with `pre-commit install` before
-your first commit. The open questions in DESIGN.md — art direction,
-audio scope, scene sequencing — remain unresolved and should be
-addressed before Phase 4 work begins.
+Phase 4 landed. The entry point now initialises a GOP-backed
+`Renderer` and renders three telemetry lines via per-glyph
+`BltOp::BufferToVideo` calls (principle 6) using the spleen 8x16
+bitmap font (BSD-2-Clause, vendored at `src/renderer/font.rs`) with a
+phosphor-green `rgb(51, 150, 51)` on black palette and a preferred
+resolution of 1024x768 (fallback to current mode). Style enforcement
+via pre-commit and `scripts/check-rust.sh` is the gate for all
+contributions; install the hooks with `pre-commit install` before your
+first commit.
 
 ## Design principles to respect
 

@@ -12,11 +12,12 @@ have to verify before you can trust them.
 
 ## Status
 
-Phase 2 landed. The binary builds, boots under QEMU with OVMF, prints
-its banner, waits for a keypress, and shuts down via ACPI. Release
-artifacts in raw and qcow2 formats are produced and verified headless.
-See [DESIGN.md](DESIGN.md) for the channel mapping, two-channel test
-architecture, and aesthetic direction.
+Phase 4 landed. The binary now renders via GOP rather than
+SimpleTextOutput, using a vendored spleen 8x16 bitmap font and a
+phosphor-green-on-black palette. Release artifacts in raw and qcow2
+formats are produced and verified headless. See [DESIGN.md](DESIGN.md)
+for the channel mapping, two-channel test architecture, and aesthetic
+direction.
 
 ## Building and running
 

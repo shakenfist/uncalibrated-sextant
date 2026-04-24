@@ -110,11 +110,14 @@ resolved by the phase in which they become relevant.
   needing nightly. If `uefi-rs`'s current release demands
   features that require nightly, pin a version that does
   not. Decide at Phase 1.
-- **Scruff depth for this milestone.** Full scruff spec is
-  scanline tile + drifting horizontal tear + occasional
-  out-of-focus halo. For a first milestone, the scanline
-  tile alone may be enough to prove the layer-on-top-of-
-  clean-signal architecture. Decide at Phase 5.
+- **Scruff depth for this milestone.** *Resolved.* The
+  character-ROM cursor glitch (see DESIGN.md *Boot sequence*)
+  is the minimum-viable glitch effect for this milestone —
+  much cheaper than a compositor overlay and sufficient to
+  prove the look-and-feel. The scanline-tile overlay is a
+  stretch goal within Phase 5; drifting horizontal tear and
+  out-of-focus halo are explicitly tracked in *Future work*
+  below for a subsequent milestone. Reassess at Phase 5.
 - **Where does the sequence end.** After `BOOT COMPLETE IN
   23.4s` there is currently nothing to do. Park on a static
   "System online. Awaiting instructions." screen with a
@@ -213,10 +216,18 @@ Compose the full opening sequence per `DESIGN.md`:
   narrator-leak parentheticals in a distinct render style
   (italics if the font supports it; otherwise indented
   plain text is acceptable).
-- The localised CRT scruff overlay: at minimum a tiled
-  scanline pattern composited on top of the clean base
-  framebuffer. Drifting horizontal tear is a stretch goal
-  for this phase.
+- **Minimum-viable glitch: character-ROM cursor glitch.**
+  A small pre-authored set of slightly-broken cursor glyph
+  variants (missing pixel, smeared edge, shifted column,
+  stuck phosphor trail) that substitute for the canonical
+  glyph on a noisy-but-scripted schedule. Visible on the
+  AWAITING screen and on the post-sequence parking screen.
+  See DESIGN.md *Boot sequence* for the full rationale.
+- **Stretch: localised CRT scruff overlay.** If time
+  permits, a tiled scanline pattern composited on top of
+  the clean base framebuffer. Drifting horizontal tear and
+  out-of-focus halo remain explicitly deferred to a later
+  milestone regardless (see *Future work*).
 - A parking screen once the sequence completes.
 
 A host-side ring buffer captures every event (keypress,
@@ -286,7 +297,9 @@ because:
   a QEMU window, the binary boots, the AWAITING OPERATOR
   screen is visible, a keypress starts the boot sequence,
   and the boot sequence plays through per `DESIGN.md` with
-  narrator leaks and scruff overlay.
+  narrator leaks and the character-ROM cursor glitch
+  present (scanline overlay if Phase 5 reached its stretch,
+  otherwise deferred per *Future work*).
 - `make release` produces at least one bootable artifact
   (raw `.img` or `.qcow2`) that boots the same way under
   a fresh QEMU invocation.
@@ -304,6 +317,12 @@ because:
 
 Items deliberately deferred out of this milestone:
 
+- **CRT scruff overlay beyond the cursor glitch.** The
+  character-ROM cursor glitch is the first-playable
+  minimum; the scanline-tile overlay is a Phase 5 stretch
+  and falls here if it doesn't land. Drifting horizontal
+  tear and out-of-focus halo are explicitly deferred
+  regardless.
 - gRPC-over-serial transport (from `instar`) as the real
   Ryll-facing event channel
 - Ryll-side `Start` handshake

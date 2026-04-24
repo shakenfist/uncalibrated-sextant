@@ -45,8 +45,8 @@ Cross-repo references, in order of likely usefulness:
   and then `qemu-img convert`s to qcow2. Useful reference for the
   `make release` target even though the build language differs.
 - OVMF — installed on this host via the Debian `ovmf` package,
-  firmware files at `/usr/share/OVMF/OVMF_CODE.fd` and
-  `OVMF_VARS.fd`. Confirm at Step 1.
+  firmware files at `/usr/share/OVMF/OVMF_CODE_4M.fd` and
+  `OVMF_VARS_4M.fd`. Confirm at Step 1.
 - `mtools` (`mformat`, `mmd`, `mcopy`) — rootless userspace FAT
   filesystem manipulation without loopback mounts. Used inside
   a disposable Docker step so host doesn't need the package.
@@ -117,7 +117,7 @@ The resolved shape for Phase 2 is therefore:
   in the operator's X session, just like ryll.
 - **`-display gtk`** is the default, matching ryll's precedent.
 - **OVMF from the host Debian `ovmf` package**, typically at
-  `/usr/share/OVMF/OVMF_CODE.fd` and `OVMF_VARS.fd`.
+  `/usr/share/OVMF/OVMF_CODE_4M.fd` and `OVMF_VARS_4M.fd`.
 
 Remaining open questions, to be resolved at the step noted:
 
@@ -164,7 +164,7 @@ to low/sonnet.
   missing, stop and report; `apt-get install qemu-system-x86`
   is the user's preferred remedy but confirm before installing.
 - `ls /usr/share/OVMF/` — expected to contain at least
-  `OVMF_CODE.fd` and `OVMF_VARS.fd` from the Debian `ovmf`
+  `OVMF_CODE_4M.fd` and `OVMF_VARS_4M.fd` from the Debian `ovmf`
   package. If missing, stop and report.
 - `cat /srv/kasm_profiles/mikal/vscode/src/shakenfist/ryll/Makefile`
   — read ryll's `qemu` target (if present) to mirror its
@@ -204,9 +204,9 @@ Create:
   **on the host** (no Docker wrapper). Mirrors ryll's flag
   pattern where sensible. Minimum flag set:
   - `-machine q35 -cpu qemu64 -m 256M`
-  - `-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd`
-  - a writable copy of `OVMF_VARS.fd` (`qemu-img create` or
-    straight `cp` into `dist/`; `-drive if=pflash,format=raw,file=dist/OVMF_VARS.fd`)
+  - `-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd`
+  - a writable copy of `OVMF_VARS_4M.fd` (`qemu-img create` or
+    straight `cp` into `dist/`; `-drive if=pflash,format=raw,file=dist/OVMF_VARS_4M.fd`)
   - `-drive format=raw,file=dist/esp.img`
   - `-display gtk`
   - `-serial file:dist/serial.log` — captures firmware chatter

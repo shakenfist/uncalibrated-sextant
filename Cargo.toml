@@ -1,0 +1,19 @@
+[package]
+name = "uncalibrated-sextant"
+version = "0.0.1"
+edition = "2021"
+description = "SPICE channel exercise harness for shakenfist/ryll"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+uefi = { version = "=0.37.0", features = ["panic_handler", "alloc", "global_allocator"] }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = "s"
+
+[profile.dev]
+panic = "abort"

@@ -85,7 +85,9 @@ Phase 4.
 ## Open questions
 
 - **`uefi` crate version.** *Resolved by Step 1.* Pin exactly to
-  `0.37.0` (published 2026-03-23; MSRV 1.81). Not `^0.37` — the
+  `0.37.0` (published 2026-03-23; MSRV 1.88 per the crate's
+  `Cargo.toml`, despite what Step 1 initially reported). Not
+  `^0.37` — the
   crate releases frequently and we want the version stable for
   the whole project until there's a reason to bump. Entry-point
   API is the *new* globals-based form: argumentless
@@ -102,20 +104,22 @@ Phase 4.
   collections, but `global_allocator` is now a separate opt-in
   feature that actually installs a UEFI-boot-services allocator
   so `Box` / `Vec` / `String` work at runtime.
-- **Rust toolchain.** *Resolved by Step 1.* Pin `1.86.0` (stable,
+- **Rust toolchain.** *Resolved by Step 1.* Pin `1.88.0` (stable,
   released 2025-04-03) in `rust-toolchain.toml`, with
   `targets = ["x86_64-unknown-uefi"]` and
   `components = ["rust-src", "rustfmt", "clippy"]`. A few months
-  old, above the crate's 1.81 MSRV, and avoids the bleeding edge
+  old, matches the crate's 1.88 MSRV exactly (the Step 1 research
+  report was wrong about the MSRV — the crate actually requires
+  1.88), and avoids the bleeding edge
   that sometimes regresses. `x86_64-unknown-uefi` is Tier 2
   without host tools but builds cleanly on stable with just
   `rustup target add x86_64-unknown-uefi` — no `-Z build-std`, no
   nightly.
 - **Docker base image.** Two plausible bases: the official
-  `rust:1.86-slim` image (rustup is already present; just run
+  `rust:1.88-slim` image (rustup is already present; just run
   `rustup component add` / `rustup target add` at build time) or
   a Debian/Alpine base with rustup installed by hand. Prefer
-  `rust:1.86-slim` for simplicity unless a concrete reason rules
+  `rust:1.88-slim` for simplicity unless a concrete reason rules
   it out. Decide at Step 2. The image should be as small as
   reasonably possible since Phase 2 will extend it with QEMU and
   OVMF.
@@ -151,7 +155,7 @@ folded into *Open questions* above. Summary:
 - `uefi` crate pinned to `0.37.0`
 - API generation: new / argumentless / globals-based
 - Features: `["panic_handler", "alloc", "global_allocator"]`
-- Rust toolchain pinned to `1.86.0` stable
+- Rust toolchain pinned to `1.88.0` stable
 - `x86_64-unknown-uefi` is Tier 2 without host tools; builds on
   stable without `-Z build-std`
 - No host Rust toolchain should be required — Docker wraps the
@@ -202,7 +206,7 @@ target = "x86_64-unknown-uefi"
 
 ```toml
 [toolchain]
-channel = "1.86.0"
+channel = "1.88.0"
 components = ["rust-src", "rustfmt", "clippy"]
 targets = ["x86_64-unknown-uefi"]
 profile = "minimal"
@@ -219,7 +223,7 @@ profile = "minimal"
 **`Dockerfile`** (at repo root)
 
 ```dockerfile
-FROM rust:1.86-slim AS build
+FROM rust:1.88-slim AS build
 
 RUN rustup component add rust-src rustfmt clippy \
  && rustup target add x86_64-unknown-uefi
@@ -228,9 +232,9 @@ WORKDIR /work
 ```
 
 Keep it minimal. Phase 2 will extend this image with QEMU, OVMF,
-and ESP image tooling; do not anticipate those here. `rust:1.86-slim`
+and ESP image tooling; do not anticipate those here. `rust:1.88-slim`
 is a small Debian-based official image that already carries rustup
-and the 1.86.0 toolchain.
+and the 1.88.0 toolchain.
 
 **`scripts/build.sh`** (make executable)
 
@@ -239,7 +243,7 @@ and the 1.86.0 toolchain.
 # Build the uncalibrated-sextant UEFI binary inside Docker.
 set -euo pipefail
 
-IMAGE_TAG="uncalibrated-sextant-build:1.86.0"
+IMAGE_TAG="uncalibrated-sextant-build:1.88.0"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Build the image if it doesn't exist. Cheap to re-run; docker
@@ -316,7 +320,7 @@ Use the new globals-based API (uefi 0.37):
    stdout.output_string(cstr16!("Hello from Uncalibrated Sextant\r\n")).unwrap())`.
 4. Block on a keypress via `uefi::system::with_stdin(|stdin|
    stdin.read_key())` in a loop, sleeping via
-   `uefi::boot::stall(10_000)` (10 ms) between polls until a
+   `uefi::boot::stall(Duration::from_millis(10))` between polls until a
    key is returned.
 5. Return `Status::SUCCESS`.
 
@@ -425,6 +429,29 @@ Phase 1 is complete when:
 - [ ] `pre-commit run --all-files` is **not** expected to pass
       yet — pre-commit is Phase 3 work. Do not add a
       pre-commit config in this phase.
+
+## Bugs fixed during this work
+
+- **Step 1 research reported wrong MSRV for `uefi` 0.37.0.** The
+  research agent said MSRV was Rust 1.81; the crate actually
+  requires 1.88. Discovered at Step 3 when `cargo build` failed
+  immediately during dependency resolution with a clear error
+  from cargo. Fixed by bumping `Dockerfile`, `scripts/build.sh`
+  tag, and `rust-toolchain.toml` from 1.86.0 to 1.88.0, and
+  correcting the version references throughout this plan. Lesson
+  for future research steps: cross-check a crate's stated MSRV
+  against its `rust-version` field directly rather than trusting
+  a docs-page or README summary.
+- **`uefi::boot::stall` API changed between uefi versions.** The
+  plan sketched `uefi::boot::stall(10_000)` (bare integer
+  microseconds), matching older releases. In 0.37 the function
+  takes a `core::time::Duration`. Discovered at Step 3 when
+  `cargo build` failed with a clear `E0308` mismatched-types
+  error pointing at the call site. Fixed by adding
+  `use core::time::Duration;` at the top of `src/main.rs` and
+  calling `uefi::boot::stall(Duration::from_millis(10))`. The
+  plan's Step 2 sketch has been updated to show the correct
+  form.
 
 ## Future work
 

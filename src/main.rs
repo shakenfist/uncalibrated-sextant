@@ -1,8 +1,9 @@
 // uncalibrated-sextant: SPICE channel exercise harness.
 //
-// Phase 5 entry point. Replaces the Phase 4 test scaffold with the
-// real boot-sequence scene. See DESIGN.md and
-// docs/plans/PLAN-first-playable-phase-05-boot-sequence.md.
+// Entry point: emit a startup banner to serial so the release-verify
+// headless check can confirm reach-of-main, then hand off to the scene
+// state machine which owns the rest of the run (and ends with ACPI
+// shutdown). See DESIGN.md and docs/plans/PLAN-first-playable.md.
 
 #![no_main]
 #![no_std]
@@ -12,6 +13,7 @@ mod event;
 mod logo;
 mod renderer;
 mod scene;
+mod serial;
 
 use renderer::Renderer;
 use scene::Scene;
@@ -20,6 +22,8 @@ use uefi::prelude::*;
 #[entry]
 fn main() -> Status {
     uefi::helpers::init().unwrap();
+
+    serial::write_startup_banner();
 
     let mut r = Renderer::new().expect("renderer init failed");
     let mut scene = Scene::new();

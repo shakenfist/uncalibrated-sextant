@@ -12,19 +12,28 @@ have to verify before you can trust them.
 
 ## Status
 
-Phase 1 skeleton landed. The crate compiles to a valid PE32+ UEFI
-binary. See [DESIGN.md](DESIGN.md) for the channel mapping,
-two-channel test architecture, and aesthetic direction.
+Phase 2 landed. The binary builds, boots under QEMU with OVMF, prints
+its banner, waits for a keypress, and shuts down via ACPI. Release
+artifacts in raw and qcow2 formats are produced and verified headless.
+See [DESIGN.md](DESIGN.md) for the channel mapping, two-channel test
+architecture, and aesthetic direction.
 
-## Building
+## Building and running
 
 ```
-make build
+make qemu       # build, assemble ESP, launch interactive QEMU window
+make release    # produce dist/uncalibrated-sextant.{img,qcow2}
+make release-verify  # headless boot check of both release artifacts
+make build      # build the UEFI binary only (Docker, no host toolchain)
+make clean      # remove dist/, target/, and the named Docker volume
 ```
 
-Docker is the only dependency. No host Rust toolchain is needed.
-OVMF, QEMU, and packaging tooling are not required yet — those come
-in Phase 2.
+`make qemu` is the primary interactive target. It opens a GTK window;
+press any key to exit cleanly via ACPI shutdown.
+
+Host dependencies for `make qemu` and `make release`: `qemu-system-x86_64`,
+`ovmf`, and `qemu-utils` (for `qemu-img`). Docker remains the only
+dependency for `make build` alone.
 
 ## Why a UEFI binary
 

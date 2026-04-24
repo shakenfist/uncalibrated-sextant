@@ -14,9 +14,19 @@ tells us what it should be.
 
 - `make build` — build the UEFI binary inside Docker. Docker is the
   only build-time dependency; no host Rust toolchain is required.
+- `make qemu` — build, assemble a FAT32 ESP image (via Alpine/mtools
+  in Docker), and launch an interactive QEMU/OVMF GTK window on the
+  host. Requires `qemu-system-x86_64` and `ovmf` on the host.
+- `make release` — build + assemble, then produce
+  `dist/uncalibrated-sextant.img` (raw) and
+  `dist/uncalibrated-sextant.qcow2` via `qemu-img convert`. Requires
+  `qemu-utils` in addition to the `make qemu` dependencies.
+- `make release-verify` — runs `make release`, then boots both
+  artifacts headless and checks that the serial log contains the
+  expected banner within 30 s.
 - `make clean` — remove the named Docker volume
-  (`uncalibrated-sextant-target`) and the local `target/` directory.
-- `make qemu` — does not exist yet; QEMU/OVMF integration is Phase 2.
+  (`uncalibrated-sextant-target`) and the local `target/` and `dist/`
+  directories.
 
 ## Where to read first
 
@@ -29,11 +39,13 @@ tells us what it should be.
 
 ## Current phase
 
-Phase 1 skeleton landed. The crate builds to a valid PE32+ UEFI
-binary (banner + keypress loop). The open questions in DESIGN.md
-("Open questions" section) — art direction, audio scope, scene
-sequencing — remain unresolved and should be addressed before Phase 2
-work begins.
+Phase 2 landed. The crate builds to a valid PE32+ UEFI binary that
+boots under QEMU with OVMF, prints a two-line banner, waits for a key
+via `wait_for_event`, then shuts down the platform via ACPI rather
+than returning to the firmware boot manager. Release artifacts (raw
+and qcow2) are produced and verified headless. The open questions in
+DESIGN.md — art direction, audio scope, scene sequencing — remain
+unresolved and should be addressed before Phase 3 work begins.
 
 ## Design principles to respect
 

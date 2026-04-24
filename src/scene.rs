@@ -120,11 +120,63 @@ impl Scene {
         let next_row = self.run_booting(renderer);
         self.run_parked(renderer, next_row);
 
+        self.drain_to_serial();
+
         uefi::runtime::reset(
             uefi::runtime::ResetType::SHUTDOWN,
             uefi::Status::SUCCESS,
             None,
         )
+    }
+
+    /// One-shot plain-text dump of the event ring buffer to the UEFI
+    /// Serial protocol, emitted immediately before ACPI shutdown.
+    ///
+    /// Proves the serial path end-to-end and is groundwork for the
+    /// eventual gRPC-over-serial transport from `instar`. Format: one
+    /// line per event, CRLF-terminated, chronological order. Silent
+    /// no-op if no Serial protocol is present.
+    fn drain_to_serial(&self) {
+        use core::fmt::Write;
+        use uefi::proto::console::serial::Serial;
+
+        let Ok(handle) = uefi::boot::get_handle_for_protocol::<Serial>() else {
+            return;
+        };
+        let Ok(mut serial) = uefi::boot::open_protocol_exclusive::<Serial>(handle) else {
+            return;
+        };
+
+        for event in self.ring.iter() {
+            match event {
+                Event::Keypress {
+                    unicode,
+                    scancode,
+                    timestamp_ms,
+                } => {
+                    let unicode_hex = *unicode as u32;
+                    let _ = writeln!(
+                        &mut *serial,
+                        "t={timestamp_ms} type=keypress unicode={unicode_hex:04x} scancode={scancode:04x}\r",
+                    );
+                }
+                Event::LineRendered { row, timestamp_ms } => {
+                    let _ = writeln!(&mut *serial, "t={timestamp_ms} type=line row={row}\r",);
+                }
+                Event::SceneTransition {
+                    from,
+                    to,
+                    timestamp_ms,
+                } => {
+                    let from_tag = from.tag();
+                    let to_tag = to.tag();
+                    let _ = writeln!(
+                        &mut *serial,
+                        "t={timestamp_ms} type=transition from={from_tag} to={to_tag}\r",
+                    );
+                }
+            }
+        }
     }
 
     // ----------------------------------------------------------------

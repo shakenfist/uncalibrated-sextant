@@ -1,9 +1,8 @@
 // Event ring buffer for uncalibrated-sextant.
 //
 // Records keypresses, rendered lines, and scene transitions as they
-// occur during a run. Phase 6 will drain this buffer to a serial
-// log; for now it exists and is populated so Phase 6 has something
-// to work with.
+// occur during a run. Drained to the UEFI Serial protocol just before
+// ACPI shutdown; see `Scene::drain_to_serial`.
 //
 // No std: fixed-size array with head/len indices, no VecDeque.
 
@@ -18,12 +17,19 @@ pub enum Phase {
     Parked,
 }
 
+impl Phase {
+    /// Short lowercase tag used by the serial drain's one-line-per-event
+    /// format. Kept stable so Ryll's future parser can match literally.
+    pub fn tag(&self) -> &'static str {
+        match self {
+            Phase::Awaiting => "awaiting",
+            Phase::Booting => "booting",
+            Phase::Parked => "parked",
+        }
+    }
+}
+
 /// Events recorded into the ring buffer during a run.
-///
-/// All variant fields are populated by `scene` and will be read by the
-/// Phase 6 serial-drain code. They are intentionally dead from the
-/// compiler's perspective until then.
-#[allow(dead_code)] // Phase 6 will read these fields via serial drain.
 #[derive(Copy, Clone, Debug)]
 pub enum Event {
     /// A key was pressed by the operator.
@@ -83,17 +89,11 @@ impl<const N: usize> RingBuffer<N> {
         }
     }
 
-    /// Number of events currently stored.
-    // Phase 6 will call this to know how many events to drain.
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// True if no events have been stored yet.
-    // Provided as the conventional companion to `len`; Phase 6 will use it.
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
+    /// Iterate over events in chronological order (oldest first).
+    pub fn iter(&self) -> impl Iterator<Item = &Event> {
+        (0..self.len).filter_map(move |i| {
+            let idx = (self.head + i) % N;
+            self.entries[idx].as_ref()
+        })
     }
 }

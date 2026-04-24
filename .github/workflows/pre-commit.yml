@@ -1,0 +1,30 @@
+name: pre-commit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      # The rust-check hook runs rustfmt and clippy inside the
+      # project's Docker build image, which has a hard dependency on
+      # a local named volume for cargo's target directory. That does
+      # not reproduce cleanly on GitHub-hosted runners, so skip it
+      # here; Rust checks are still enforced locally via pre-commit
+      # on every commit. Once we have self-hosted shakenfist runners
+      # wired up (see Future work in PLAN-first-playable-phase-03-
+      # style.md), the rust-check hook can run in CI too.
+      - name: Run pre-commit (rust hook skipped)
+        run: SKIP=rust-check pre-commit run --all-files

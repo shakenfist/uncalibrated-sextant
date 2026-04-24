@@ -61,7 +61,11 @@ warming up) until one of two signals arrives:
 The AWAITING screen is a small but real piece of content in its own
 right, not dead time — it's the operator's first view of the
 system, and it sets the tone before the boot sequence proper
-begins. It also doubles as a reconnect-safe state: if the client
+begins. A steady blinking cursor on this screen (and anywhere else
+the system is waiting for input) is the liveness signal that
+distinguishes "waiting for you" from "frozen"; see *Boot sequence*
+for how that blink doubles as the cheapest available glitch surface.
+It also doubles as a reconnect-safe state: if the client
 disconnects mid-session and reconnects, SPICE replays the last
 framebuffer, so holding on the opening screen until a positive
 connection signal means no client ever sees the sequence
@@ -182,6 +186,17 @@ stubs. It also ties neatly into the Wire-level control ladder:
 when `direct hardware control: FAILED` eventually becomes `OK`,
 the narrator's worry softens, and the tonal shift is a real
 in-game reward for the implementation work.
+
+**Keep the self-doubt deliberately multi-valent.** The narrator
+should not resolve onto any single interpretation of what is
+wrong — hardware fault, environmental degradation, drift,
+something more fundamental, a supply-chain attack. The text
+should let readers map the uncertainty onto whichever register
+they find meaningful (aging machinery, reliability of one's own
+senses, existential unease, something else) without ever
+committing to one reading. Ambiguity is the feature, not a
+failure to decide. See `docs/creator-notes/` for the design
+discussion this principle came out of.
 
 ## Wire-level control
 
@@ -321,6 +336,47 @@ This resolves the tension between "looks cool and unstable" and
 "is testable": the instability is diegetic, visible, and fun, but
 it's a layer, not the signal.
 
+**Blinking cursor and the character-ROM glitch.** A steady
+blinking cursor — classic terminal cadence, around 1 to 1.5 Hz —
+carries two loads simultaneously. Functionally, it is the
+liveness indicator that lets an operator distinguish "waiting
+for input" from "session frozen"; the AWAITING OPERATOR screen
+and any post-sequence parking screen rely on this. Aesthetically,
+it is the cheapest glitch surface available to us. The cursor
+glyph is rendered from a character ROM that is *slightly*
+degraded: most blinks produce the canonical glyph, but
+occasionally one of a small pre-authored set of broken variants
+appears instead — a missing pixel, a smeared edge, a shifted
+column, a stuck phosphor trail. The variants are deterministic
+bitmaps with stable identifiers and the substitution cadence,
+though noisy, is ultimately scripted, so a future Ryll milestone
+can assert which variant appeared when.
+
+This is also a quietly effective test of the display channel's
+small-repeated-update path. A blinking cursor is a stream of
+tiny BitBlt operations at a regular cadence; when the cursor
+glyph varies, GLZ's dictionary has to handle multiple bitmap IDs
+in quick succession at the same screen position. Neither
+behaviour is exotic, both are the kind of thing that can break
+subtly under load.
+
+Note, for correctness: the text cursor is **display**-channel
+content, not SPICE-cursor-channel content. The SPICE cursor
+channel is specifically for the mouse pointer (shape, visibility,
+position). The two are easy to conflate and the design doc should
+not.
+
+**Decision for the first-playable milestone.** The cursor
+glitch is much cheaper to implement than a full CRT scruff
+overlay (a handful of small bitmaps and a substitution schedule
+versus a compositor layer), so it *is* the minimum-viable
+glitch for the first-playable milestone. The scanline-tile
+overlay becomes a stretch goal within that milestone; the
+drifting horizontal tear and out-of-focus halo effects remain
+explicitly tracked later-milestone work. The point is to ship a
+visible, on-brand glitch effect without the overlay being a
+gating dependency — not to drop the overlay forever.
+
 ## First milestone scope
 
 We bootstrap this project via a local `make qemu` Makefile target,
@@ -388,6 +444,17 @@ channel. To be expanded — or replaced — once we commit to a setting.
   full sequence on paper first?
 - **Concept art** — ASCII mockups initially are fine; commissioning
   pixel art is a separate decision
+- **Kerbside-as-distance-measurement scene (later milestone).** A
+  future scene concept where the narrator ostensibly computes its
+  distance from home via round-trip latency measurement while the
+  harness is, in reality, benchmarking Kerbside's Python SPICE
+  proxy under a usbredir stress load (large data transfer from a
+  redirected USB disk). Dual-purpose: a real performance benchmark
+  for a known concern, plus screenshottable output and a natural
+  place for narrator self-doubt ("has my clock drifted? is the
+  operator spoofing light-speed delay?"). Not in scope for the
+  first-playable milestone. Source discussion in
+  `docs/creator-notes/2026-04-concepts.md`.
 
 ## Tooling notes
 

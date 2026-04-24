@@ -39,5 +39,13 @@ shape is sketched in [DESIGN.md](DESIGN.md):
 - Input collectors using Simple Text Input Ex (keyboard) and Simple
   Pointer Protocol (mouse), each pushing into the ring buffer
 
+Style enforcement is declared in `.pre-commit-config.yaml` and
+executed by `scripts/check-rust.sh`, which reuses the Phase 1 Docker
+build image (`uncalibrated-sextant-build:1.88.0`) so Rust checks
+never require a host toolchain. The GitHub Actions workflow at
+`.github/workflows/pre-commit.yml` runs all non-Rust hooks (trailing
+whitespace, YAML, shellcheck, secret scanning) on every push and pull
+request; the `rust-check` hook is skipped there and enforced locally.
+
 This file will be expanded with concrete module/crate boundaries
 once we commit to an implementation skeleton.

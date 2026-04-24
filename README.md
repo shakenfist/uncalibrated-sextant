@@ -35,6 +35,29 @@ Host dependencies for `make qemu` and `make release`: `qemu-system-x86_64`,
 `ovmf`, and `qemu-utils` (for `qemu-img`). Docker remains the only
 dependency for `make build` alone.
 
+## Contributing
+
+Install the hooks once:
+
+```
+pre-commit install
+```
+
+Run the full suite against all files:
+
+```
+pre-commit run --all-files
+```
+
+Auto-fix rustfmt and clippy warnings in one step:
+
+```
+./scripts/check-rust.sh fix
+```
+
+Contributor-side dependencies are Docker (for the Rust checks) and
+`pre-commit` itself. No host Rust toolchain is required.
+
 ## Why a UEFI binary
 
 Booting an entire OS to test a remote-display protocol is unpredictable

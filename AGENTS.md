@@ -28,6 +28,17 @@ tells us what it should be.
   (`uncalibrated-sextant-target`) and the local `target/` and `dist/`
   directories.
 
+### Style commands
+
+These run rustfmt and clippy inside the same Docker image used by
+`make build`. They are the commands the `rust-check` pre-commit hook
+invokes directly.
+
+- `./scripts/check-rust.sh check` — check formatting and clippy
+  warnings; exits non-zero on any failure.
+- `./scripts/check-rust.sh fix` — auto-apply `cargo fmt` and
+  `cargo clippy --fix`; safe to run on a dirty working tree.
+
 ## Where to read first
 
 1. [README.md](README.md) — project framing
@@ -39,13 +50,16 @@ tells us what it should be.
 
 ## Current phase
 
-Phase 2 landed. The crate builds to a valid PE32+ UEFI binary that
+Phase 3 landed. The crate builds to a valid PE32+ UEFI binary that
 boots under QEMU with OVMF, prints a two-line banner, waits for a key
 via `wait_for_event`, then shuts down the platform via ACPI rather
 than returning to the firmware boot manager. Release artifacts (raw
-and qcow2) are produced and verified headless. The open questions in
-DESIGN.md — art direction, audio scope, scene sequencing — remain
-unresolved and should be addressed before Phase 3 work begins.
+and qcow2) are produced and verified headless. Style enforcement via
+pre-commit and `scripts/check-rust.sh` is now the gate for all
+contributions; install the hooks with `pre-commit install` before
+your first commit. The open questions in DESIGN.md — art direction,
+audio scope, scene sequencing — remain unresolved and should be
+addressed before Phase 4 work begins.
 
 ## Design principles to respect
 

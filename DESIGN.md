@@ -17,7 +17,7 @@ independent channels, both fed from a single in-memory ring buffer:
 - **Serial (gRPC-over-serial, bidirectional)** — primary headless
   assertion channel. Ryll drives the guest ("render this payload as a
   QR", "report current framebuffer hash", "advance to next scene")
-  and consumes structured events ("key_down scancode=0x1e at t=…"). 
+  and consumes structured events ("key_down scancode=0x1e at t=…").
   Transport pattern lifted from [instar](../instar/).
 - **Visual (on-screen digest)** — periodic QR or compact text
   rendered into the framebuffer, encoding the last N events from the

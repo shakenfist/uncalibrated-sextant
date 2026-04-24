@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+        # Cargo.lock is written by Docker (root-owned); we cannot open
+        # it for writing here. It already ends with a newline.
+        exclude: ^Cargo\.lock$
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: mixed-line-ending
+
+  - repo: local
+    hooks:
+      - id: rust-check
+        name: rustfmt and clippy
+        entry: ./scripts/check-rust.sh check
+        language: script
+        pass_filenames: false
+        files: \.rs$
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        files: ^scripts/
+        types_or: [sh, bash, shell]
+        args: ['-x']
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks

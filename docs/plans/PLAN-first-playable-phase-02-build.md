@@ -215,7 +215,7 @@ Create:
   - `-enable-kvm` unconditionally. KVM is always available on
     this host and SPICE performance measurement in later phases
     depends on realistic timing.
-  
+
   Takes the ESP image path as a positional argument for reuse
   by `make release`'s verification pass.
 - **`Makefile`** — add:

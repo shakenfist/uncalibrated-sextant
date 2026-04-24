@@ -1,4 +1,4 @@
-.PHONY: build clean qemu release release-verify
+.PHONY: build clean qemu release release-verify screenshot
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -18,6 +18,9 @@ release: build
 release-verify: release
 	./scripts/verify-release.sh dist/uncalibrated-sextant.img raw
 	./scripts/verify-release.sh dist/uncalibrated-sextant.qcow2 qcow2
+
+screenshot: build
+	./scripts/screenshot.sh
 
 clean:
 	docker volume rm -f uncalibrated-sextant-target

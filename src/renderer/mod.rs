@@ -22,6 +22,15 @@ pub const CELL_W: usize = 8;
 /// Glyph cell height in pixels.
 pub const CELL_H: usize = 16;
 
+/// Horizontal overscan margin in pixels. All content is inset from
+/// the left and right edges by this much so the screen does not
+/// feel "hard up against the bezel".
+pub const MARGIN_X: usize = 16;
+
+/// Vertical overscan margin in pixels. All content is inset from
+/// the top and bottom edges by this much.
+pub const MARGIN_Y: usize = 16;
+
 /// Phosphor-green foreground. Dimmed from full-bright (51, 255, 51)
 /// toward (51, 150, 51) to read as aged CRT rather than brand-new.
 const FG: BltPixel = BltPixel::new(51, 150, 51);
@@ -94,8 +103,8 @@ impl Renderer {
             }
         }
 
-        let px = col * CELL_W;
-        let py = row * CELL_H;
+        let px = MARGIN_X + col * CELL_W;
+        let py = MARGIN_Y + row * CELL_H;
         let _ = self.gop.blt(BltOp::BufferToVideo {
             buffer: &buf,
             src: BltRegion::Full,
@@ -110,6 +119,97 @@ impl Renderer {
     pub fn draw_line(&mut self, text: &str, row: usize) {
         for (col, ch) in text.chars().enumerate() {
             self.draw_glyph(ch, col, row);
+        }
+    }
+
+    /// Render raw glyph bytes at the given text-cell position.
+    ///
+    /// Used by the cursor subsystem to draw canonical and broken-variant
+    /// cursor glyphs without routing them through the ASCII font table.
+    /// Each bit is interpreted identically to `draw_glyph`: bit 7 of
+    /// each row byte is the leftmost pixel.
+    /// Issues exactly one `BltOp::BufferToVideo` call (principle 6).
+    pub fn draw_cursor_glyph(&mut self, bytes: &[u8; 16], col: usize, row: usize) {
+        let mut buf = [BG; CELL_W * CELL_H];
+        for (r, &byte) in bytes.iter().enumerate() {
+            for c in 0..CELL_W {
+                if byte & (0x80 >> c) != 0 {
+                    buf[r * CELL_W + c] = FG;
+                }
+            }
+        }
+
+        let px = MARGIN_X + col * CELL_W;
+        let py = MARGIN_Y + row * CELL_H;
+        let _ = self.gop.blt(BltOp::BufferToVideo {
+            buffer: &buf,
+            src: BltRegion::Full,
+            dest: (px, py),
+            dims: (CELL_W, CELL_H),
+        });
+    }
+
+    /// Clear a single text cell to the background colour.
+    ///
+    /// Used to erase the cursor during the dark half of a blink cycle.
+    /// Issues one `BltOp::VideoFill` call.
+    pub fn clear_cell(&mut self, col: usize, row: usize) {
+        let px = MARGIN_X + col * CELL_W;
+        let py = MARGIN_Y + row * CELL_H;
+        let _ = self.gop.blt(BltOp::VideoFill {
+            color: BG,
+            dest: (px, py),
+            dims: (CELL_W, CELL_H),
+        });
+    }
+
+    /// Number of whole 8x16 text cells that fit between the left and
+    /// right overscan margins on the current screen.
+    pub fn screen_cols(&self) -> usize {
+        (self.width.saturating_sub(2 * MARGIN_X)) / CELL_W
+    }
+
+    /// Draw a packed 1-bit-per-pixel bitmap as a grid of 8x16 tiles
+    /// at text-cell position (`col`, `row`). Set bits render as
+    /// foreground, clear bits as background.
+    ///
+    /// The bitmap must be row-major, MSB-leftmost, with `width_px`
+    /// and `height_px` both multiples of `CELL_W` and `CELL_H`
+    /// respectively. One `BltOp::BufferToVideo` per tile (principle
+    /// 6 — the logo is a grid of repeated tile sizes so the server
+    /// can dictionary-match).
+    pub fn draw_logo(
+        &mut self,
+        bitmap: &[u8],
+        width_px: usize,
+        height_px: usize,
+        col: usize,
+        row: usize,
+    ) {
+        let tiles_x = width_px / CELL_W;
+        let tiles_y = height_px / CELL_H;
+        let bitmap_row_bytes = width_px / 8;
+        for ty in 0..tiles_y {
+            for tx in 0..tiles_x {
+                let mut buf = [BG; CELL_W * CELL_H];
+                for ly in 0..CELL_H {
+                    let src_row = ty * CELL_H + ly;
+                    let byte = bitmap[src_row * bitmap_row_bytes + tx];
+                    for lx in 0..CELL_W {
+                        if byte & (0x80 >> lx) != 0 {
+                            buf[ly * CELL_W + lx] = FG;
+                        }
+                    }
+                }
+                let px = MARGIN_X + (col + tx) * CELL_W;
+                let py = MARGIN_Y + (row + ty) * CELL_H;
+                let _ = self.gop.blt(BltOp::BufferToVideo {
+                    buffer: &buf,
+                    src: BltRegion::Full,
+                    dest: (px, py),
+                    dims: (CELL_W, CELL_H),
+                });
+            }
         }
     }
 

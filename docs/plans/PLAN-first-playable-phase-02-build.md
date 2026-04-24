@@ -21,28 +21,35 @@ phase iterates on nothing visible except "does it boot".
 The phase-1 plan's "Bugs fixed during this work" section records
 two surprises that happened despite careful Step 1 research
 (wrong MSRV, changed `stall` API). Expect similar surprises here
-— OVMF firmware paths, QEMU flag names, display-forwarding quirks
-in the Kasm/Docker environment, and Docker volume plumbing are
-all likely to need iteration. Plan for it.
+— OVMF flag incantations, QEMU version differences, Docker volume
+plumbing, and exactly how OVMF VARS are stored are all plausible
+sources of friction. Plan for it.
+
+**Operating environment reminder.** This workspace runs on a
+mutable Linux host with a real X session (`qemu-system-x86_64`
+already installed and in routine use by ryll). GUI tools launched
+from this shell open windows naturally in the desktop session.
+Rust builds are wrapped in Docker to keep the host clean of
+Rust toolchains, but other system packages live on the host
+normally. Do not attempt elaborate display forwarding or
+docker-in-docker dances. See `feedback_host_environment.md` in
+memory.
 
 Cross-repo references, in order of likely usefulness:
 
-- `shakenfist/ryll/Makefile` — the model named in the master plan
-  for `make qemu`. Read what it does; don't reinvent.
+- `shakenfist/ryll/Makefile` — the canonical reference for
+  running QEMU in this environment. Read what it does; mirror
+  its flag pattern; don't reinvent.
 - `shakenfist/uefi-latency-guest/Makefile` — C-based prior art
   that assembles a GPT-formatted disk with `UEFI-GPT-image-creator`
   and then `qemu-img convert`s to qcow2. Useful reference for the
   `make release` target even though the build language differs.
-- OVMF — typically installed as `/usr/share/OVMF/OVMF_CODE.fd` and
-  `OVMF_VARS.fd` on Debian/Ubuntu by the `ovmf` package, or
-  `edk2-ovmf` on Fedora/Arch. Path may vary.
+- OVMF — installed on this host via the Debian `ovmf` package,
+  firmware files at `/usr/share/OVMF/OVMF_CODE.fd` and
+  `OVMF_VARS.fd`. Confirm at Step 1.
 - `mtools` (`mformat`, `mmd`, `mcopy`) — rootless userspace FAT
-  filesystem manipulation without loopback mounts. Preferred over
-  `mkfs.vfat` + `mount` for ESP assembly because it avoids needing
-  root or privileged containers.
-- `qemu-system-x86_64` — target is `-machine q35 -cpu qemu64 -m
-  256M -bios /path/to/OVMF_CODE.fd -drive format=raw,file=esp.img`
-  at minimum. Display mode to be decided at Step 1.
+  filesystem manipulation without loopback mounts. Used inside
+  a disposable Docker step so host doesn't need the package.
 
 All planning documents go in `docs/plans/`.
 
@@ -89,139 +96,136 @@ phases 4 and 5 are going to rely on, so it needs to be tight.
 
 ## Open questions
 
-- **Host vs Docker for the QEMU run.** Three shapes are plausible:
-  1. **All-Docker** — QEMU, OVMF, and mtools all live inside a
-     container; display is forwarded via X11 socket bind-mount,
-     VNC port forward, or `-display spice-app`. Most portable,
-     matches the Phase 1 "Docker is the only host dep" rule
-     cleanly, but display forwarding is the finicky part.
-  2. **Docker-build + host-run** — Docker only for cargo and ESP
-     assembly; QEMU and OVMF are installed on the host. Simplest
-     from a display standpoint. Requires the host to have
-     `qemu-system-x86_64`, `ovmf`, and possibly `mtools` (or we
-     keep mtools in Docker).
-  3. **Two-image Docker** — `Dockerfile` for the build image
-     (existing), `Dockerfile.run` for a separate image carrying
-     qemu/ovmf/mtools. Same portability as (1) but keeps the
-     build image small and layers clean.
-  
-  The owner's stated preference (Phase 1 amendment) is to avoid
-  installing Rust on the host. That principle extends naturally
-  to QEMU and OVMF. Shape (3) is therefore the default
-  expectation; Step 1 should confirm whether (1) can reasonably
-  fold into (3) for display, or whether a split image is needed.
+Most of the shape questions the original draft of this plan
+left open were resolved by clarifying the environment: the
+workspace runs on a mutable Linux host (named Kasm) with a
+real X session, QEMU is already installed and in routine use
+(that is how ryll's `make qemu` works today), and GUI apps
+launched from this shell open windows naturally in the desktop
+session. No X-forwarding gymnastics or container display
+plumbing is needed. See `feedback_host_environment.md` in
+memory for context.
 
-- **Display mode.** Options and tradeoffs:
-  - `-display gtk` — native GTK window; needs X socket
-    (`/tmp/.X11-unix`) bind-mounted into the container and a
-    passthrough `$DISPLAY`. Works well in most Linux desktop
-    environments.
-  - `-display spice-app` — spawns virt-viewer automatically.
-    Thematic for this project but requires virt-viewer present.
-  - `-vnc :N` / `-spice port=M` — headless QEMU, user connects
-    separately. Robust, works over network, but "run and view"
-    becomes two commands.
-  - `-nographic` — serial only. Fine for Phase 3+ assertion work;
-    not useful for Phase 2's human-verification goal.
-  
-  Decide at Step 1 based on what the Kasm environment actually
-  allows. `-display gtk` with X socket forwarding is the likely
-  default; `-vnc` is the reliable fallback.
+The resolved shape for Phase 2 is therefore:
 
-- **OVMF firmware layout.** Debian's `ovmf` package places code
-  at `/usr/share/OVMF/OVMF_CODE.fd` and vars at `OVMF_VARS.fd`.
-  The run image can just `apt-get install ovmf` and use those
-  paths. Confirm at Step 1.
+- **Rust build and ESP assembly in Docker.** Rust stays in the
+  Phase 1 Docker image. ESP image assembly runs in a tiny
+  disposable Docker step (Alpine + `mtools`) so the host
+  doesn't need `mtools`.
+- **QEMU run on host.** Invoke `qemu-system-x86_64` directly
+  from `scripts/qemu.sh`; the resulting window is a GTK window
+  in the operator's X session, just like ryll.
+- **`-display gtk`** is the default, matching ryll's precedent.
+- **OVMF from the host Debian `ovmf` package**, typically at
+  `/usr/share/OVMF/OVMF_CODE.fd` and `OVMF_VARS.fd`.
+
+Remaining open questions, to be resolved at the step noted:
 
 - **ESP image layout.** A plain FAT32 image with one file at
-  `/EFI/BOOT/BOOTX64.EFI` is the simplest thing that boots. GPT
-  partitioning (as in `uefi-latency-guest`) is more realistic
-  but optional — OVMF's fallback bootloader will happily boot
-  from a FAT image passed directly as a `-drive`. Default:
-  plain FAT image for `make qemu`; GPT-wrapped raw for
-  `make release` if it turns out to matter for portability.
-  Decide at Step 2.
-
-- **Release artifact formats.** Baseline is raw `.img`; adding
-  `.qcow2` is one `qemu-img convert` away and near-free. VHD
-  and VMDK are stretch. Plan for raw + qcow2 at Step 4.
-
-- **Artifact host-visibility.** Release artifacts go into `dist/`
-  at the repo root (host-visible path), added to `.gitignore`.
-  Named Docker volumes (cargo target, optionally an ESP
-  scratch volume) remain invisible to the host; that's fine for
-  build intermediate state.
+  `/EFI/BOOT/BOOTX64.EFI` is the simplest thing that boots.
+  GPT partitioning (as in `uefi-latency-guest`) is more
+  realistic for distribution but optional for local
+  iteration — OVMF's fallback bootloader will happily boot
+  from a FAT image passed directly as a `-drive`. Default
+  plan: plain FAT for `make qemu`; GPT-wrapped raw for
+  `make release` only if portability testing turns out to
+  require it. Decide at Step 2.
+- **Release artifact formats.** Baseline is raw `.img`;
+  `.qcow2` is one `qemu-img convert` away. VHD and VMDK are
+  stretch. Plan for raw + qcow2 at Step 4.
+- **Where release artifacts land.** Default `dist/` at the
+  repo root (host-visible, `.gitignore`d). Settle at Step 4.
+KVM acceleration is **always on** for this project — `/dev/kvm`
+is available on the host and the first-playable milestone's
+later phases (and subsequent SPICE-performance-measurement
+work) depend on realistic timing, not software-emulation
+timing. `scripts/qemu.sh` passes `-enable-kvm` unconditionally.
 
 ## Execution
 
 | Step | Effort | Model  | Isolation | Brief for sub-agent |
 |------|--------|--------|-----------|---------------------|
-| 1    | medium | opus   | none      | Research: confirm Kasm environment capabilities for display forwarding, find the right OVMF package/paths, pick the host/Docker split shape, pick display mode. See Step 1 below. |
-| 2    | medium | sonnet | none      | Implement ESP assembly + QEMU launch. Create `scripts/mkesp.sh`, `scripts/qemu.sh`, possibly `Dockerfile.run`, and extend `Makefile` with a `qemu` target. See Step 2 below. |
+| 1    | low    | sonnet | none      | Confirm host has `qemu-system-x86_64` and `ovmf`, record their paths, and note whether `/dev/kvm` is accessible. Read ryll's Makefile for reference patterns. Report back. See Step 1 below. |
+| 2    | medium | sonnet | none      | Implement ESP assembly + QEMU launch. Create `scripts/mkesp.sh` (Docker + mtools, rootless), `scripts/qemu.sh` (host invocation), and extend `Makefile` with a `qemu` target. See Step 2 below. |
 | 3    | low    | sonnet | none      | Run `make qemu`, verify the banner is visible in the QEMU window, verify keypress exits cleanly. Capture the firmware log. See Step 3 below. |
 | 4    | medium | sonnet | none      | Add `make release` target producing raw + qcow2 artifacts in `dist/`. Verify each independently boots. See Step 4 below. |
 | 5    | low    | sonnet | none      | Update `README.md`, `ARCHITECTURE.md`, `AGENTS.md` to reflect the new commands, dependencies, and artifact layout. See Step 5 below. |
 
-### Step 1 — research and decide
+### Step 1 — confirm host tooling and record paths
 
-**Check:**
+The shape questions are settled (see *Open questions*), so this
+step is now a short confirmation pass rather than an
+open-ended research exercise. Effort downgraded from medium/opus
+to low/sonnet.
 
-- Is `qemu-system-x86_64` installed on the host? Is `ovmf`? Is
-  `mformat` (mtools)? Run `which qemu-system-x86_64 ovmf mformat`
-  on the host and record.
-- What display does QEMU have available inside this Kasm
-  environment? Specifically: does `/tmp/.X11-unix` exist and is
-  it writable? Is `$DISPLAY` set? Is Wayland involved?
-- Does `shakenfist/ryll/Makefile` have a `qemu` target, and if
-  so what does it do? Read it; don't reinvent if it already
-  solved this.
-- What OVMF paths does the Debian `ovmf` package install? `dpkg
-  -L ovmf` on any Debian system with the package, or check
-  Debian's package tracker.
-- Are there Kasm-specific constraints on bind-mounting
-  `/tmp/.X11-unix`, running privileged containers, or using KVM
-  inside a container? (KVM acceleration is a nice-to-have for
-  QEMU; without it we fall back to software emulation which is
-  slow but works.)
+**Confirm on the host (not in a container):**
 
-**Decide:**
+- `which qemu-system-x86_64` — expected to return a path. If
+  missing, stop and report; `apt-get install qemu-system-x86`
+  is the user's preferred remedy but confirm before installing.
+- `ls /usr/share/OVMF/` — expected to contain at least
+  `OVMF_CODE.fd` and `OVMF_VARS.fd` from the Debian `ovmf`
+  package. If missing, stop and report.
+- `cat /srv/kasm_profiles/mikal/vscode/src/shakenfist/ryll/Makefile`
+  — read ryll's `qemu` target (if present) to mirror its
+  QEMU flag patterns. Do not reinvent; this is the project's
+  canonical reference for running QEMU in this environment.
 
-- Shape — all-Docker / Docker-build + host-run / two-image
-  Docker — based on what's available and what respects the
-  "don't install on host" preference.
-- Display mode — `-display gtk`, `-vnc`, `-display spice-app`,
-  or other.
-- OVMF strategy — package install in the run image, or
-  bundled binaries, or other.
-
-**Output:** a short paragraph to the management session
-recording the decisions and anything surprising. No file
-changes in this step.
+**Output:** a concise note back to the management session
+recording (a) the two confirmed paths (`qemu-system-x86_64`,
+OVMF firmware) and (b) any relevant flags lifted from ryll's
+Makefile. No file changes in this step.
 
 ### Step 2 — implement ESP assembly and QEMU launcher
 
 Create:
 
 - **`scripts/mkesp.sh`** — rootless ESP image assembly via
-  `mtools`. Creates an empty FAT image (`dd if=/dev/zero`),
-  formats it (`mformat -i esp.img -v ESP ::`), creates the
-  directories (`mmd -i esp.img ::/EFI ::/EFI/BOOT`), and copies
-  the `.efi` as `BOOTX64.EFI` (`mcopy -i esp.img
-  /path/to/uncalibrated-sextant.efi ::/EFI/BOOT/BOOTX64.EFI`).
-  Lives in a Docker container (either the build image extended
-  with mtools, or the run image).
-- **`scripts/qemu.sh`** — wraps `qemu-system-x86_64` with the
-  decided flags. Takes the ESP image path as a positional arg
-  for reuse by `make release` verification.
-- **`Dockerfile.run`** (or single Dockerfile with a run stage,
-  per Step 1 decision) — minimal Debian-based image with
-  `qemu-system-x86_64`, `ovmf`, `mtools`, and whatever display
-  plumbing Step 1 settled on.
+  `mtools`, running inside a disposable Docker container so the
+  host doesn't need `mtools` installed. The script should:
+  1. Pull (or rely on cached) a small Alpine or Debian-slim
+     image with `mtools` and `mkfs.vfat` available (for
+     example, `alpine` with `apk add --no-cache mtools
+     dosfstools`, or a purpose-built Dockerfile fragment; the
+     existing `rust:1.88-slim` build image does not have
+     mtools by default).
+  2. Inside the container, bind-mount the host `dist/`
+     directory (creating it if necessary) and the Docker
+     cargo-target named volume from Phase 1 read-only, create
+     an empty ~33 MiB FAT image (`dd if=/dev/zero of=esp.img
+     bs=1M count=33`), format it (`mformat -i esp.img -v ESP
+     ::`), create the directory tree (`mmd -i esp.img ::/EFI
+     ::/EFI/BOOT`), and copy the `.efi` in as `BOOTX64.EFI`
+     (`mcopy -i esp.img
+     /path/to/uncalibrated-sextant.efi ::/EFI/BOOT/BOOTX64.EFI`).
+  3. The resulting `dist/esp.img` is host-visible for `qemu.sh`
+     to read directly.
+- **`scripts/qemu.sh`** — wraps `qemu-system-x86_64`, invoked
+  **on the host** (no Docker wrapper). Mirrors ryll's flag
+  pattern where sensible. Minimum flag set:
+  - `-machine q35 -cpu qemu64 -m 256M`
+  - `-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd`
+  - a writable copy of `OVMF_VARS.fd` (`qemu-img create` or
+    straight `cp` into `dist/`; `-drive if=pflash,format=raw,file=dist/OVMF_VARS.fd`)
+  - `-drive format=raw,file=dist/esp.img`
+  - `-display gtk`
+  - `-serial file:dist/serial.log` — captures firmware chatter
+    for the Step 3 review and as baseline material for Phase 3's
+    CI work.
+  - `-enable-kvm` unconditionally. KVM is always available on
+    this host and SPICE performance measurement in later phases
+    depends on realistic timing.
+  
+  Takes the ESP image path as a positional argument for reuse
+  by `make release`'s verification pass.
 - **`Makefile`** — add:
-  - `qemu` target that depends on `build`, calls `mkesp.sh`,
-    then calls `qemu.sh`.
-  - Extend `clean` to remove the ESP image and any additional
-    named volumes.
+  - `qemu` target that depends on `build`, calls `mkesp.sh` to
+    produce `dist/esp.img`, then calls `qemu.sh dist/esp.img`.
+  - Extend `clean` to remove `dist/`.
+  - Keep `build` and existing `clean` behaviour intact.
+
+No `Dockerfile.run` is needed. QEMU runs on the host; only
+`mkesp.sh`'s ephemeral container touches Docker.
 
 Important: Makefile recipes use tabs. Any shell loops or
 conditionals live in `scripts/` not in Makefile recipes (per
@@ -234,8 +238,7 @@ to Makefile recipes).
 
 Run `make qemu`. Expect:
 
-1. A QEMU window (or VNC/SPICE session, depending on display
-   mode) opens.
+1. A QEMU GTK window opens in the operator's X session.
 2. OVMF's boot splash appears briefly, then hands off to
    `BOOTX64.EFI`.
 3. The Phase 1 banner (`Hello from Uncalibrated Sextant`) is
@@ -283,13 +286,14 @@ Add `/dist` to `.gitignore`.
 Update:
 
 - **`README.md`** — extend the *Building* section (or add a
-  *Running* section alongside it) with `make qemu`. Note the
-  Docker dependency is now "Docker plus a display the run
-  container can use" (X11, VNC, or SPICE per Step 1). Mention
-  `make release` and the `dist/` output.
+  *Running* section alongside it) with `make qemu`. Note that
+  host dependencies are now Docker + `qemu-system-x86_64` +
+  `ovmf` (the latter two via the distro's `qemu-system-x86`
+  and `ovmf` Debian packages). Mention `make release` and the
+  `dist/` output.
 - **`AGENTS.md`** — extend *Build commands* with `make qemu`
-  and `make release`. Note the display requirements for the
-  `qemu` target.
+  and `make release`. Note the host dependencies (Docker,
+  qemu-system-x86_64, ovmf).
 - **`ARCHITECTURE.md`** — describe the new scripts and the ESP
   assembly / QEMU launch flow. Keep it short; Phase 4 will
   expand the architecture sections more substantially.
@@ -301,24 +305,23 @@ phase-specific emphases:
 
 - **The visual verification in Step 3 is load-bearing.** Do not
   mark Phase 2 complete without a human (or the management
-  session, acting on sub-agent description) confirming the
+  session, acting on a sub-agent's description) confirming the
   banner was visible in the QEMU window. An exit-zero `make
   qemu` that never reached `BOOTX64.EFI` is the phase's most
   likely failure mode.
-- **Docker image size matters modestly.** The run image will be
-  noticeably bigger than the build image because OVMF and QEMU
-  are large. That is fine, but do not install unnecessary
-  packages. Strip down after install where practical
-  (`apt-get clean`, `rm -rf /var/lib/apt/lists/*`).
+- **Mirror ryll where possible.** `shakenfist/ryll/Makefile` is
+  the canonical reference for running QEMU on this host. Read
+  it first and lift its flag patterns before inventing new ones.
+  Differences should be justified, not incidental.
 
 ## Success criteria
 
 Phase 2 is complete when:
 
-- [ ] `make qemu` on a fresh clone (with only Docker on the
-      host, or Docker plus whatever display plumbing Step 1
-      decided) opens a window where the Phase 1 banner is
-      visible and a keypress exits cleanly.
+- [ ] `make qemu` on a fresh clone (with host dependencies
+      Docker, `qemu-system-x86_64`, and `ovmf` installed) opens
+      a GTK window where the Phase 1 banner is visible and a
+      keypress exits cleanly.
 - [ ] `make release` produces `dist/uncalibrated-sextant.img`
       (raw) and `dist/uncalibrated-sextant.qcow2`, both of
       which individually boot under QEMU to the same banner.

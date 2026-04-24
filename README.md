@@ -12,8 +12,19 @@ have to verify before you can trust them.
 
 ## Status
 
-Design phase. No code yet. See [DESIGN.md](DESIGN.md) for the channel
-mapping, two-channel test architecture, and aesthetic direction.
+Phase 1 skeleton landed. The crate compiles to a valid PE32+ UEFI
+binary. See [DESIGN.md](DESIGN.md) for the channel mapping,
+two-channel test architecture, and aesthetic direction.
+
+## Building
+
+```
+make build
+```
+
+Docker is the only dependency. No host Rust toolchain is needed.
+OVMF, QEMU, and packaging tooling are not required yet — those come
+in Phase 2.
 
 ## Why a UEFI binary
 

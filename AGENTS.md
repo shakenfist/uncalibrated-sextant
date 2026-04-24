@@ -10,6 +10,14 @@ delivered as a tiny retrofuturist sci-fi mini-game running as a
 The codename is intentional: pick a true name later, when the content
 tells us what it should be.
 
+## Build commands
+
+- `make build` — build the UEFI binary inside Docker. Docker is the
+  only build-time dependency; no host Rust toolchain is required.
+- `make clean` — remove the named Docker volume
+  (`uncalibrated-sextant-target`) and the local `target/` directory.
+- `make qemu` — does not exist yet; QEMU/OVMF integration is Phase 2.
+
 ## Where to read first
 
 1. [README.md](README.md) — project framing
@@ -21,11 +29,11 @@ tells us what it should be.
 
 ## Current phase
 
-Design only. There is no Rust code yet. Before scaffolding a Cargo
-project, the open questions in DESIGN.md ("Open questions" section)
-should be at least partially resolved — particularly art direction,
-audio scope, and whether to build one scene first or design the full
-sequence on paper.
+Phase 1 skeleton landed. The crate builds to a valid PE32+ UEFI
+binary (banner + keypress loop). The open questions in DESIGN.md
+("Open questions" section) — art direction, audio scope, scene
+sequencing — remain unresolved and should be addressed before Phase 2
+work begins.
 
 ## Design principles to respect
 

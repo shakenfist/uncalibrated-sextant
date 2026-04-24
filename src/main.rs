@@ -7,31 +7,37 @@
 #![no_main]
 #![no_std]
 
-use core::time::Duration;
 use uefi::prelude::*;
 
 #[entry]
 fn main() -> Status {
     uefi::helpers::init().unwrap();
 
-    // Clear screen.
-    uefi::system::with_stdout(|stdout| stdout.clear().unwrap());
-
-    // Print the banner.
     uefi::system::with_stdout(|stdout| {
+        stdout.clear().unwrap();
         stdout
-            .output_string(cstr16!("Hello from Uncalibrated Sextant\r\n"))
-            .unwrap()
+            .output_string(cstr16!(
+                "Hello from Uncalibrated Sextant\r\n\
+                 Press any key to exit.\r\n"
+            ))
+            .unwrap();
     });
 
-    // Wait for any keypress before returning.
-    loop {
-        let key = uefi::system::with_stdin(|stdin| stdin.read_key());
-        if let Ok(Some(_)) = key {
-            break;
-        }
-        uefi::boot::stall(Duration::from_millis(10));
-    }
+    // Block until a key is pressed, using the canonical UEFI
+    // wait_for_event pattern rather than polling read_key. The event,
+    // the subsequent wait_for_event, and the drain-read all happen
+    // inside a single with_stdin closure so the Event's lifetime is
+    // unambiguously tied to the stdin borrow.
+    uefi::system::with_stdin(|stdin| {
+        let event = stdin.wait_for_key_event().unwrap();
+        uefi::boot::wait_for_event(&mut [event]).unwrap();
+        let _ = stdin.read_key();
+    });
 
-    Status::SUCCESS
+    // Ask the platform to shut down rather than returning control to
+    // OVMF's boot manager. Returning would leave QEMU running (and
+    // its GTK window with the keyboard grabbed) until the operator
+    // killed it externally. QEMU translates ResetType::SHUTDOWN into
+    // an ACPI shutdown and exits cleanly.
+    uefi::runtime::reset(uefi::runtime::ResetType::SHUTDOWN, Status::SUCCESS, None)
 }

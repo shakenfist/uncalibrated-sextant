@@ -1,4 +1,4 @@
-.PHONY: build clean qemu release release-verify screenshot vendor-probes
+.PHONY: build clean qemu spice release release-verify screenshot vendor-probes
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -8,6 +8,10 @@ build:
 qemu: build
 	./scripts/mkesp.sh
 	./scripts/qemu.sh dist/esp.img
+
+spice: build
+	./scripts/mkesp.sh
+	./scripts/spice.sh dist/esp.img
 
 release: build
 	./scripts/mkesp.sh

@@ -141,12 +141,33 @@ or absent, leave it as a silent assertion.
 
 | Operation | Mode | Metaphorical role | Status |
 |-----------|------|-------------------|--------|
-| Text clipboard server → client (instrument copies) | set | The instrument offering something to the operator | — |
+| Text clipboard server → client (instrument copies) | set | The instrument hands the operator a payload only the outside world can read | — |
 | Text clipboard client → server (operator pastes in) | play | A message dropped in from outside — content the instrument did not generate | — |
 | Image clipboard | both | A picture being shown / received | — |
 | Large clipboard payload | play | The operator depositing something substantial | — |
 | Clipboard ownership negotiation | set | Quiet protocol about who is currently speaking | — |
 | Multi-format clipboard item | set | A message offered in several forms — *take it however you can read it* | — |
+
+**Note on transport.** Real SPICE clipboard requires
+`spice-vdagent` on the guest, which talks to the host over a
+virtio-serial port. UEFI has neither, and writing a
+virtio-serial driver plus vdagent protocol implementation in
+`no_std` is a milestone of its own (see
+[PLAN-locked-bootloader.md](plans/PLAN-locked-bootloader.md)
+*Future work*). In the meantime the two halves split
+asymmetrically:
+
+- **Client → server.** `remote-viewer` and `virt-viewer` fall
+  back to replaying clipboard paste as Inputs-channel
+  keystrokes when no vdagent is detected on the guest. The
+  existing keyboard polling receives those keystrokes
+  character-by-character. Real `play` with no extra UEFI work.
+- **Server → client.** No comparable fallback exists. First
+  versions render the payload on screen as text the operator
+  copies visually from their SPICE client. Genre-honest as a
+  fallback (terminal tradition is full of "write this down")
+  but not a real channel test until vdagent lands. Status
+  rows for these stay `—` until vdagent does.
 
 ## USB redirection
 

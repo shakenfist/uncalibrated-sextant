@@ -1,0 +1,30 @@
+GNU Unifont
+===========
+
+Source: https://unifoundry.com/unifont/
+Upstream maintainer: Paul Hardy <unifoundry@unifoundry.com>
+
+Beginning with Unifont 9.0.06 (October 2016), upstream releases the
+Unifont font files under a dual-licensing scheme:
+
+  * GNU GPL version 2 or later, with the GNU Font Embedding
+    Exception, OR
+  * SIL Open Font License version 1.1.
+
+Recipients may choose either license. This project (uncalibrated-
+sextant) selects the SIL Open Font License version 1.1 for the
+embedded Unifont-derived bitmaps in src/probes.rs.
+
+The SIL Open Font License version 1.1 is reproduced upstream at:
+  https://openfontlicense.org/open-font-license-official-text/
+  https://scripts.sil.org/OFL
+
+Reserved Font Name: "Unifont".
+
+Modifications under this project: glyphs for the eight strings
+listed in scripts/vendor-language-probes.py have been rasterised
+at pointsize 16, thresholded to 1 bit per pixel, cropped to 16
+rows of pixel data, and packed as row-major MSB-leftmost bytes
+in src/probes.rs. No glyph outlines or font tables have been
+modified or redistributed; only rendered pixel data derived from
+the font is included in this repository.

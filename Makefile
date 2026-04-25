@@ -1,4 +1,4 @@
-.PHONY: build clean qemu release release-verify screenshot
+.PHONY: build clean qemu release release-verify screenshot vendor-probes
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -21,6 +21,9 @@ release-verify: release
 
 screenshot: build
 	./scripts/screenshot.sh
+
+vendor-probes:
+	./scripts/vendor-language-probes.py > src/probes.rs
 
 clean:
 	docker volume rm -f uncalibrated-sextant-target

@@ -17,4 +17,6 @@ repo root. For pre-push audits of our own work see `PUSH-TEMPLATE.md`.
 
 ## Standalone plans
 
-_No standalone plans yet._
+| Date | Plan | Intent | Status |
+|------|------|--------|--------|
+| 2026-04-25 | [Language probes](PLAN-language-probes.md) | Worldbuilding side quest: four boot-sequence lines in Mandarin / Hindi / Spanish / English establish that English is no longer the default in the fictional universe; introduces a generic text-bitmap renderer | Not started |

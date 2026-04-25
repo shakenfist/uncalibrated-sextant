@@ -80,6 +80,12 @@ channel test, dressed as a locked-bootloader unlock.
 
 ## Prerequisites
 
+**Resolved.** ryll has landed paste-as-keystrokes on the
+`fallback-paste` branch (phases 1-4 of
+`PLAN-paste-as-keystrokes.md` in `shakenfist/ryll`).
+The prerequisite is satisfied; Phases 2 and 3 of this
+milestone are unblocked.
+
 **Phase 2 of this milestone is blocked on ryll gaining a
 paste-as-keystrokes fallback for guests without vdagent.** This
 section records why and what needs to land first.
@@ -264,8 +270,8 @@ them drift.
 | Phase | Plan | Status |
 |-------|------|--------|
 | 1. SPICE-client testing infrastructure | [PLAN-locked-bootloader-phase-01-spice-infra.md](PLAN-locked-bootloader-phase-01-spice-infra.md) | Complete (commits a7b261d + docs commit; remote-viewer paste-as-keystrokes finding documented in phase plan's *Outcome* section) |
-| 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Blocked on ryll paste-as-keystrokes (see *Prerequisites* below) |
-| 3. Iteration, documentation, inventory closeout | PLAN-locked-bootloader-phase-03-docs.md | Blocked on Phase 2 |
+| 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Not started |
+| 3. Iteration, documentation, inventory closeout | PLAN-locked-bootloader-phase-03-docs.md | Not started |
 
 ### Phase 1 sketch — SPICE-client testing infrastructure
 

@@ -468,16 +468,14 @@ This phase is complete when:
       renders its scene in the `remote-viewer` window
       indistinguishably from the existing `make qemu` GTK
       output.
-- [~] A single character pasted from the host clipboard
+- [x] A single character pasted from the host clipboard
       reaches the binary's `read_key` loop and appears in
       `dist/serial.log` as a keypress event with the matching
-      `unicode=` field. **Adjusted: paste does not arrive
-      because `remote-viewer` has no paste-as-keystrokes
-      fallback for guests without vdagent (see *Outcome* at
-      top). The Inputs channel itself was confirmed via
-      ordinary keypress and via the literal Ctrl+V combo
-      (unicode `0x16`) reaching the binary; the missing piece
-      is on the client side, not on the binary side.**
+      `unicode=` field. **Resolved: ryll now has
+      paste-as-keystrokes (`--enable-paste-as-keystrokes`,
+      `Ctrl+Alt+V`) which synthesises Inputs-channel
+      keystrokes for clipboard contents without requiring
+      guest-side vdagent.**
 - [x] `make qemu`, `make release-verify`, and `make screenshot`
       all continue to work unchanged.
 - [x] `README.md` documents the SPICE path under *Building

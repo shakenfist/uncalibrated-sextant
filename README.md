@@ -37,6 +37,7 @@ sequence, captured by `make screenshot` and regenerated on demand.
 
 ```
 make qemu            # build, assemble ESP, launch interactive QEMU window
+make spice           # build, assemble ESP, launch QEMU with SPICE + remote-viewer
 make release         # produce dist/uncalibrated-sextant.{img,qcow2}
 make release-verify  # headless boot check of both release artifacts
 make screenshot      # regenerate docs/images/boot-sequence.png via QMP
@@ -47,6 +48,33 @@ make clean           # remove dist/, target/, and the named Docker volume
 
 `make qemu` is the primary interactive target. It opens a GTK window;
 press any key to exit cleanly via ACPI shutdown.
+
+### Running under SPICE
+
+`make spice` builds the binary, launches QEMU with a SPICE server on
+`127.0.0.1:5900`, and auto-spawns `remote-viewer` to attach. This
+confirms the SPICE Display and Inputs channels work end-to-end against
+the binary; it is the required launch path for any scene that exercises
+a SPICE channel rather than QEMU's bare GTK display.
+
+If `remote-viewer` is not installed, the script exits with a clear
+hint — install it with `sudo apt install virt-viewer`.
+
+**Exit gesture: Ctrl-C in the terminal.** There is no QEMU-owned
+window in this configuration — closing the `remote-viewer` window does
+not stop QEMU. Always exit via Ctrl-C in the terminal that launched
+`make spice`; the script's trap will kill both QEMU and `remote-viewer`
+cleanly. This is the opposite of the instinct from `make qemu`.
+
+If port 5900 is already in use, override with
+`SPICE_PORT=5901 make spice`.
+
+Note on current scope: Phase 1 confirmed SPICE Display and ordinary
+keystrokes work. The first scene that requires SPICE clipboard
+(the locked-bootloader scene) is blocked on ryll gaining a
+paste-as-keystrokes fallback for guests without vdagent; see
+[docs/plans/PLAN-locked-bootloader.md](docs/plans/PLAN-locked-bootloader.md)
+Prerequisites for full context.
 
 Host dependencies for `make qemu` and `make release`: `qemu-system-x86_64`,
 `ovmf`, and `qemu-utils` (for `qemu-img`). Docker remains the only

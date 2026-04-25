@@ -2,6 +2,72 @@
 
 Parent plan: [PLAN-locked-bootloader.md](PLAN-locked-bootloader.md).
 
+## Outcome
+
+**Status: Complete (commits a7b261d, plus the docs commit landing
+this update).**
+
+`scripts/spice.sh` and `make spice` shipped as designed. SPICE
+Display and Inputs channels both verified to work: a smoke test
+launched the binary under `make spice`, observed the framebuffer
+in `remote-viewer`, advanced past AWAITING with a normal
+keystroke, and confirmed the keystroke arrived in the binary's
+`read_key` loop and was emitted to the serial drain.
+
+**Headline finding (master plan assumption falsified):**
+`remote-viewer` does **not** have a paste-as-keystrokes fallback
+for guests without vdagent. The smoke test attempted a single-
+character paste at the parking screen and observed the literal
+Ctrl+V combo (unicode `0x16`) arrive at the binary instead of
+the clipboard contents. Confirmed against `man remote-viewer`:
+clipboard sharing is governed by the `share-clipboard` config
+key "if clipboard sharing is supported by used protocol", which
+for SPICE means a guest-side `spice-vdagent`. There is no
+documented hotkey, menu item, or `--help-all` option for
+injecting clipboard contents as keystrokes.
+
+The master plan's central assumption was that `remote-viewer`'s
+paste-as-keystrokes fallback would be sufficient to drive the
+locked-bootloader scene during development, with `ryll` taking
+over later. That fallback does not exist. The path forward
+(documented in the master plan's revised *Prerequisites*
+section) is:
+
+1. Add paste-as-keystrokes to ryll itself (a new standalone
+   plan in `shakenfist/ryll/`).
+2. Then start locked-bootloader Phase 2 with ryll as the
+   canonical SPICE client.
+
+`make spice` remains useful Phase 1 infrastructure: it confirms
+SPICE Display and Inputs work against our binary, gives ryll a
+real target to develop against, and unblocks any future scene
+that does not require clipboard paste. The script and Makefile
+target are unchanged by this finding.
+
+### What Phase 1 actually delivered
+
+- `scripts/spice.sh` — SPICE-attached QEMU launch (qxl, port
+  5900, no display, auto-spawns `remote-viewer`).
+- `make spice` Makefile target alongside `make qemu`.
+- Smoke-test verification of SPICE Display + Inputs channels.
+- README + AGENTS documentation of the SPICE path (commit
+  landing alongside this update).
+- This Outcome section, recording the remote-viewer finding.
+
+### What Phase 1 did NOT deliver, and why
+
+- **Multi-character paste characterisation.** Originally
+  deferred to Phase 2 because the binary lacked a buffer-
+  holding scene; now also blocked because no available client
+  can deliver such a paste at all without vdagent. Will be
+  characterised once ryll's paste-as-keystrokes lands.
+- **Confirmation that paste-as-keystrokes works against this
+  binary.** The Phase 1 smoke test could not run as originally
+  written. Replaced with single-keystroke confirmation via
+  ordinary keypress and Ctrl+V (which proved the Inputs
+  channel itself functions, just not what we hoped to test).
+
+
 ## Prompt
 
 Before working on this phase, re-read the master plan's *Phase 1
@@ -391,38 +457,46 @@ Phase-specific emphases:
 
 This phase is complete when:
 
-- [ ] `scripts/spice.sh` exists, is executable, passes
+- [x] `scripts/spice.sh` exists, is executable, passes
       shellcheck, and launches QEMU + `remote-viewer` together.
-- [ ] `make spice` is a working `Makefile` target listed in
+- [x] `make spice` is a working `Makefile` target listed in
       `.PHONY`.
-- [ ] Closing the operator session via Ctrl-C in the terminal
+- [x] Closing the operator session via Ctrl-C in the terminal
       kills both QEMU and `remote-viewer` cleanly (no orphan
       processes).
-- [ ] The first-playable binary, launched via `make spice`,
+- [x] The first-playable binary, launched via `make spice`,
       renders its scene in the `remote-viewer` window
       indistinguishably from the existing `make qemu` GTK
       output.
-- [ ] A single character pasted from the host clipboard
+- [~] A single character pasted from the host clipboard
       reaches the binary's `read_key` loop and appears in
       `dist/serial.log` as a keypress event with the matching
-      `unicode=` field.
-- [ ] `make qemu`, `make release-verify`, and `make screenshot`
+      `unicode=` field. **Adjusted: paste does not arrive
+      because `remote-viewer` has no paste-as-keystrokes
+      fallback for guests without vdagent (see *Outcome* at
+      top). The Inputs channel itself was confirmed via
+      ordinary keypress and via the literal Ctrl+V combo
+      (unicode `0x16`) reaching the binary; the missing piece
+      is on the client side, not on the binary side.**
+- [x] `make qemu`, `make release-verify`, and `make screenshot`
       all continue to work unchanged.
-- [ ] `README.md` documents the SPICE path under *Building
+- [x] `README.md` documents the SPICE path under *Building
       and running*.
-- [ ] `AGENTS.md` lists `make spice` and `scripts/spice.sh`.
-- [ ] `pre-commit run --all-files` exits 0.
+- [x] `AGENTS.md` lists `make spice` and `scripts/spice.sh`.
+- [x] `pre-commit run --all-files` exits 0.
 
 ### Future work
 
 Items deliberately deferred from this phase:
 
 - **Multi-character paste characterisation.** Trailing newline
-  semantics, inter-character delays, any normalisation
-  performed by `remote-viewer` or QEMU's SPICE Inputs channel.
-  Belongs in Phase 2 where the locked-bootloader scene
-  natively holds for multi-char input and can observe a
-  buffered paste end-to-end.
+  semantics, inter-character delays, any normalisation. Will
+  be characterised in the Phase 2 work, against the ryll
+  paste-as-keystrokes path (whatever ryll does *is* the
+  characterisation, since it is the implementer of that
+  pathway). The original Phase 2 plan to characterise this
+  against `remote-viewer` is moot — `remote-viewer` cannot
+  deliver it at all.
 - **Port-probing for SPICE.** If a developer's `5900` is
   occupied, the `SPICE_PORT=5901 make spice` env-var override
   is the documented escape hatch for now. Auto-probing for a
@@ -430,11 +504,6 @@ Items deliberately deferred from this phase:
 - **QMP socket on `make spice`.** Add only if Phase 2's
   iteration loop wants programmatic control of the SPICE-
   attached QEMU. Phase 2 will judge.
-- **Switching from `remote-viewer` to ryll.** Master plan
-  *Open questions / SPICE client* covers this in detail.
-  Requires either a Ryll-side paste-as-keystrokes fallback or
-  a UEFI vdagent implementation; both are larger than this
-  whole milestone.
 - **Channels beyond Display + Inputs.** Audio / USB /
   smartcard / folder share each get enabled as the
   corresponding scene lands.
@@ -446,7 +515,14 @@ Items deliberately deferred from this phase:
 
 ### Bugs fixed during this work
 
-(None yet — populated during execution.)
+- **Master plan assumption falsified: `remote-viewer` lacks
+  paste-as-keystrokes fallback.** Discovered during this
+  phase's smoke test. Captured in *Outcome* at top of this
+  document and propagated into the master plan's revised
+  *Prerequisites* and *Open questions / SPICE client*
+  sections. Not strictly a code bug, but a planning bug
+  worth recording so the next planner does not re-make the
+  same assumption.
 
 ### Back brief
 

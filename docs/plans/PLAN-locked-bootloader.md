@@ -206,9 +206,9 @@ them drift.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. SPICE-client testing infrastructure | [PLAN-locked-bootloader-phase-01-spice-infra.md](PLAN-locked-bootloader-phase-01-spice-infra.md) | Not started |
-| 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Not started |
-| 3. Iteration, documentation, inventory closeout | PLAN-locked-bootloader-phase-03-docs.md | Not started |
+| 1. SPICE-client testing infrastructure | [PLAN-locked-bootloader-phase-01-spice-infra.md](PLAN-locked-bootloader-phase-01-spice-infra.md) | Complete (commits a7b261d + docs commit; remote-viewer paste-as-keystrokes finding documented in phase plan's *Outcome* section) |
+| 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Blocked on ryll paste-as-keystrokes (see *Prerequisites* below) |
+| 3. Iteration, documentation, inventory closeout | PLAN-locked-bootloader-phase-03-docs.md | Blocked on Phase 2 |
 
 ### Phase 1 sketch — SPICE-client testing infrastructure
 

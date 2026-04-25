@@ -36,13 +36,14 @@ UNIFONT = '/usr/share/fonts/opentype/unifont/unifont.otf'
 
 CELL_HEIGHT = 16
 
-# (rust_name_prefix, label_text, status_text). The four lines render
-# in this order at the top of BOOT_SCRIPT.
+# (rust_name_prefix, label_text, status_text). These lines render
+# at the top of BOOT_SCRIPT, ahead of the ASCII telemetry. Only
+# scripts spleen cannot represent live here; Latin-script probes
+# (Spanish, English) go through the spleen telemetry path directly
+# and are not vendored as bitmaps.
 PROBES = [
     ('MANDARIN', '检测中文支持', '失败'),
     ('HINDI', 'हिन्दी समर्थन की जाँच', 'विफल'),
-    ('SPANISH', 'Detectando soporte para español', 'FALLO'),
-    ('ENGLISH', 'Probing for English support', 'OK'),
 ]
 
 

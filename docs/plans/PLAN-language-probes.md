@@ -3,6 +3,24 @@
 Standalone plan, single phase. Lands before
 [PLAN-locked-bootloader.md](PLAN-locked-bootloader.md).
 
+## Post-landing note
+
+Shipped in three commits (bb41e70, 288a839, c67d70a) following
+the design below, then revised in a follow-up: the Spanish and
+English probe lines were moved out of the bitmap path and onto
+the existing spleen `SceneStep::Telemetry` path. Spleen is
+ASCII-only, so the Spanish text was changed from
+`Detectando soporte para español` to
+`Detectando soporte para castellano` (the formal, accent-free
+name of the Spanish language). This eliminated a visible font
+mismatch between the Latin probes (Unifont) and the rest of the
+boot transcript (spleen). `scripts/vendor-language-probes.py`
+now only emits Mandarin and Hindi bitmaps. The AWAITING screen
+was simultaneously stripped of its English `AWAITING OPERATOR`
+text and reduced to a lone blinking cursor — diegetically, the
+system has not yet probed for language support and so cannot
+prompt in any specific language.
+
 ## Prompt
 
 Before working on this plan, re-read the *Voice* and *Boot

@@ -81,20 +81,36 @@ packed 1-bit-per-pixel bitmap as an 8x16-cell grid (one
 `BltOp::BufferToVideo` per cell, principle 6) and accepts widths and
 heights that are not multiples of the cell size.
 
-The boot sequence opens with four language-probe lines —
-`检测中文支持 ........ 失败`, `हिन्दी समर्थन की जाँच ........ विफल`,
-`Detectando soporte para español ........ FALLO`, and
-`Probing for English support ........ OK` — establishing in
-worldbuilding terms that English is no longer the default.
-`scripts/vendor-language-probes.py` rasterises each label and status
-via ImageMagick + GNU Unifont (used under SIL OFL 1.1; see
-`LICENSES/FONT_UNIFONT.txt`) at pointsize 16, packs them as
+The boot sequence opens with four language-probe lines:
+`检测中文支持 ........ 失败` and `हिन्दी समर्थन की जाँच ........ विफल`
+are rendered as Unifont bitmaps via `SceneStep::Probe`;
+`Detectando soporte para castellano ........ FALLO` and
+`Probing for English support ........ OK` are pure ASCII and go
+through the existing spleen `SceneStep::Telemetry` path so they
+match the rest of the boot transcript visually. (`castellano` is
+the formal name of the Spanish language and is the standard term
+in Spanish constitutional and official usage; it has no diacritics
+and so fits the ASCII-only spleen table without compromise.) The
+opening establishes in worldbuilding terms that English is no
+longer the default.
+
+`scripts/vendor-language-probes.py` rasterises only the non-Latin
+probe lines via ImageMagick + GNU Unifont (used under SIL OFL 1.1;
+see `LICENSES/FONT_UNIFONT.txt`) at pointsize 16, packs them as
 row-major MSB-leftmost bytes, and emits `src/probes.rs`.
 `SceneStep::Probe` carries references to the bitmap pairs;
 `Renderer::draw_probe_line` composes a hybrid layout — bitmap
 label at column 0, ASCII space + dot leader ending at
 `DOT_LEADER_COL = 40`, bitmap status starting at column 41 — so
 column alignment with the rest of the boot transcript is preserved.
+
+The AWAITING phase (`Scene::run_awaiting`) draws no text: just a
+blinking cursor at the top-left corner with the logo in the
+top-right. Diegetically, the system has not yet probed for language
+support, so it cannot legitimately prompt in any specific language;
+a lone cursor is the language-neutral "ready" signal. The first
+keypress transitions to `run_booting`, where the language probes
+establish which script the rest of the transcript may use.
 
 `MARGIN_X = MARGIN_Y = 16` overscan margins are applied as a
 renderer-level pixel offset added to every `draw_glyph` call, keeping

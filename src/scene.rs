@@ -61,17 +61,18 @@ static BOOT_SCRIPT: &[SceneStep<'static>] = &[
         status_bitmap: &crate::probes::PROBE_HINDI_STATUS_BITMAP,
         status_width_px: crate::probes::PROBE_HINDI_STATUS_WIDTH_PX,
     },
-    SceneStep::Probe {
-        label_bitmap: &crate::probes::PROBE_SPANISH_LABEL_BITMAP,
-        label_width_px: crate::probes::PROBE_SPANISH_LABEL_WIDTH_PX,
-        status_bitmap: &crate::probes::PROBE_SPANISH_STATUS_BITMAP,
-        status_width_px: crate::probes::PROBE_SPANISH_STATUS_WIDTH_PX,
+    // Spanish and English are Latin-script: rendered through the spleen
+    // telemetry path so they match the rest of the boot transcript
+    // visually. `castellano` is used in place of `español` to keep the
+    // line ASCII (it is the formal name of the Spanish language and
+    // appears in Spanish constitutional and official usage).
+    SceneStep::Telemetry {
+        label: "Detectando soporte para castellano",
+        status: "FALLO",
     },
-    SceneStep::Probe {
-        label_bitmap: &crate::probes::PROBE_ENGLISH_LABEL_BITMAP,
-        label_width_px: crate::probes::PROBE_ENGLISH_LABEL_WIDTH_PX,
-        status_bitmap: &crate::probes::PROBE_ENGLISH_STATUS_BITMAP,
-        status_width_px: crate::probes::PROBE_ENGLISH_STATUS_WIDTH_PX,
+    SceneStep::Telemetry {
+        label: "Probing for English support",
+        status: "OK",
     },
     // --- REMOTE LINK ---
     SceneStep::Telemetry {
@@ -228,16 +229,17 @@ impl Scene {
     // Phase: Awaiting
     // ----------------------------------------------------------------
 
-    /// Show AWAITING OPERATOR with a blinking cursor; return on first key.
+    /// Show a lone blinking cursor and wait for the first keypress.
+    ///
+    /// No text is drawn here: the system has not yet probed for language
+    /// support, so it cannot prompt in any specific language. The cursor
+    /// sits at column 0, row 0 — a fresh, language-neutral "ready"
+    /// signal. The language probes that open `run_booting` are what
+    /// establish (in worldbuilding terms) which language the rest of
+    /// the transcript is allowed to use.
     fn run_awaiting(&mut self, renderer: &mut Renderer) {
-        const TEXT: &str = "AWAITING OPERATOR";
-        // Place the text roughly centred vertically and at col 0.
-        const TEXT_ROW: usize = 10;
-        // Cursor sits one cell to the right of the last character.
-        const CURSOR_COL: usize = TEXT.len() + 1;
-        const CURSOR_ROW: usize = TEXT_ROW;
-
-        renderer.draw_line(TEXT, TEXT_ROW);
+        const CURSOR_COL: usize = 0;
+        const CURSOR_ROW: usize = 0;
 
         loop {
             // Advance cursor state by one poll interval.

@@ -79,8 +79,11 @@ invokes directly.
 The first-playable milestone has landed. The entry point emits a
 one-line startup banner to serial (what `make release-verify` greps
 for) and then delegates to `Scene::run`, which drives a three-state
-machine: AWAITING OPERATOR, Booting (scripted `BOOT_SCRIPT` at
-200 ms pacing), and Parked. On the final keypress, `serial::drain`
+machine: a wordless lone-cursor Awaiting screen (no text — the
+system has not yet probed for language support), Booting (scripted
+`BOOT_SCRIPT` at 200 ms pacing, opening with bitmap probes for
+non-Latin scripts and spleen-rendered probes for Spanish/English),
+and Parked. On the final keypress, `serial::drain`
 emits one CRLF-terminated line per recorded event to COM1
 (`t=<ms> type=...`) as groundwork for the eventual gRPC-over-serial
 transport, then ACPI-shuts-down. A committed reference screenshot

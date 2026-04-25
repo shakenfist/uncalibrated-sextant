@@ -13,13 +13,14 @@ have to verify before you can trust them.
 ## Status
 
 The first-playable milestone has landed. The binary runs the full
-scene state machine — AWAITING OPERATOR screen, a scripted boot
-sequence, and a SYSTEM ONLINE parking screen — with blinking cursor,
-LFSR-driven glitch substitution, and the Shaken Fist logo rendered
-as a tiled 8x16 glyph grid in the top-right corner. The opening
-beats now probe for Mandarin / Hindi / Spanish / English language
-support (three FAILED in their own scripts, English OK), establishing
-that English is no longer the default in the fictional universe. On
+scene state machine — a wordless lone-cursor "awaiting" screen, a
+scripted boot sequence, and a SYSTEM ONLINE parking screen — with
+blinking cursor, LFSR-driven glitch substitution, and the Shaken Fist
+logo rendered as a tiled 8x16 glyph grid in the top-right corner. The
+opening beats probe for Mandarin / Hindi / Spanish / English language
+support (the three non-English probes report failure in their own
+scripts, English OK), establishing that English is no longer the
+default in the fictional universe. On
 final shutdown, the event ring buffer is drained to the UEFI Serial
 protocol as plain text, groundwork for the eventual gRPC-over-serial
 transport. See [DESIGN.md](DESIGN.md) for the channel mapping,

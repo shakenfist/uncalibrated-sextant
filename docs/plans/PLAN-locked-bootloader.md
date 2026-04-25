@@ -31,9 +31,20 @@ Cross-repo references, in order of likely usefulness:
   channel test rather than the on-screen-blob stub this
   milestone ships.
 - `remote-viewer` (`virt-viewer` package on Debian / Fedora) —
-  the SPICE client we will use to play this scene during
-  development. Confirms paste-as-keystrokes fallback when no
-  vdagent is detected on the guest.
+  the SPICE client `make spice` auto-spawns. **Useful only for
+  display + ordinary keystrokes; cannot drive this scene's
+  paste step**, because clipboard sharing in `remote-viewer`
+  requires a guest-side vdagent (which our binary does not
+  have). Was originally planned as the canonical client for
+  this scene during development; superseded by ryll once
+  ryll's paste-as-keystrokes feature lands. See
+  *Prerequisites* below.
+- `shakenfist/ryll` — eventual canonical SPICE client for this
+  scene. Already speaks the host side of vdagent clipboard
+  ([ryll/src/channels/main_channel.rs:28-38](../../../ryll/ryll/src/channels/main_channel.rs))
+  but lacks a paste-as-keystrokes fallback for guests that do
+  not advertise `CAP_CLIPBOARD_*`. Adding that fallback is
+  this milestone's prerequisite (see *Prerequisites* below).
 
 All planning documents go in `docs/plans/`. Phase plans will
 be separate files named `PLAN-locked-bootloader-phase-NN-...md`
@@ -67,18 +78,68 @@ enough to earn screen time — *Text clipboard client → server*
 did not generate") — and builds the first scene that is a real
 channel test, dressed as a locked-bootloader unlock.
 
+## Prerequisites
+
+**Phase 2 of this milestone is blocked on ryll gaining a
+paste-as-keystrokes fallback for guests without vdagent.** This
+section records why and what needs to land first.
+
+The original plan assumed `remote-viewer` could deliver
+clipboard paste as Inputs-channel keystrokes when no guest
+vdagent was detected, and therefore that this milestone could
+be played end-to-end against `make spice` + `remote-viewer`
+without any change to ryll. Phase 1's smoke test falsified this
+assumption: `remote-viewer`'s clipboard sharing is gated on
+guest-side vdagent (per `man remote-viewer`: "if clipboard
+sharing is supported by used protocol"); there is no documented
+hotkey, menu item, or `--help-all` option that injects clipboard
+contents as keystrokes when vdagent is absent. A literal Ctrl+V
+in `remote-viewer` is forwarded to the guest as a Ctrl+V
+keystroke, not interpreted as a paste request. See the *Outcome*
+section of
+[PLAN-locked-bootloader-phase-01-spice-infra.md](PLAN-locked-bootloader-phase-01-spice-infra.md)
+for the smoke-test evidence.
+
+The path forward, in order:
+
+1. **Add paste-as-keystrokes to ryll** — a small, focused
+   ryll-side feature: when the guest has not advertised
+   `CAP_CLIPBOARD_*` after some short window, replay the host
+   clipboard as Inputs-channel keystrokes. Tracked in a
+   separate plan in `shakenfist/ryll/docs/plans/` (TBD —
+   filename to be confirmed when that plan is drafted).
+   Independently valuable to ryll: gives ryll a useful
+   non-vdagent fallback for any guest, not just this project.
+2. **Then start Phase 2** of this milestone. The scene design
+   below is unchanged; only the client driving the paste
+   changes (`ryll` instead of `remote-viewer`). `make spice`
+   itself is unchanged — the operator simply runs ryll in
+   place of the auto-spawned `remote-viewer`. Phase 2's plan
+   may add a `make ryll` (or `make spice-ryll`) target as a
+   convenience.
+
+The eventual UEFI-side vdagent + virtio-serial work remains
+*Future work* — not a prerequisite — because once ryll has
+paste-as-keystrokes the milestone can ship without it. Vdagent
+in the UEFI binary upgrades the test from "operator pastes,
+ryll synthesises keystrokes, guest reads keystrokes" to
+"operator pastes, ryll sends clipboard, guest reads clipboard"
+— a more faithful channel test, but not load-bearing for
+shipping the locked-bootloader scene.
+
 ## Mission and problem statement
 
 Build a scene, inserted into the existing boot sequence
 between `SENSORIUM: nominal` and `EMERGENCY SAFE BOOT
 COMPLETE`, that exercises clipboard paste from operator → guest
 as a real SPICE-channel test, and which an operator can play
-through using a SPICE client (`remote-viewer` for now, `ryll`
-eventually). The test passes when the operator pastes the
-correctly-decoded base64 payload back into the SPICE session;
-fails (with operator-visible error and ACPI-shutdown) when the
-paste does not arrive within the paste timeout; restarts the
-entire run when the operator selects Abort at the prompt.
+through using ryll (with its forthcoming paste-as-keystrokes
+feature; see *Prerequisites* above). The test passes when the
+operator pastes the correctly-decoded base64 payload back into
+the SPICE session; fails (with operator-visible error and
+ACPI-shutdown) when the paste does not arrive within the paste
+timeout; restarts the entire run when the operator selects
+Abort at the prompt.
 
 Shape of the new scene, embedded mid-boot-sequence:
 
@@ -119,12 +180,15 @@ Shape of the new scene, embedded mid-boot-sequence:
    the video alone.
 
 Under the surface, paste capture works via the Phase 5 keyboard
-polling — `remote-viewer` and `virt-viewer` detect the absence
-of vdagent on the guest and fall back to replaying clipboard
-paste as Inputs-channel keystrokes, character by character. The
-on-screen blob in step 5 is a stub for the real SPICE clipboard
-server → client write, which requires virtio-serial + vdagent
-in UEFI and is explicitly *Future work*.
+polling — ryll (once it has paste-as-keystrokes; see
+*Prerequisites*) replays the host clipboard as Inputs-channel
+keystrokes, character by character, and the binary's existing
+`read_key` loop receives each one. No change to the binary's
+input path is required; the Inputs channel was confirmed
+working end-to-end in Phase 1's smoke test. The on-screen blob
+in step 5 is a stub for the real SPICE clipboard server →
+client write, which requires virtio-serial + vdagent in UEFI
+and is explicitly *Future work*.
 
 The milestone is done when an operator can launch a
 `make spice` target, walk all four flow paths
@@ -139,24 +203,17 @@ Defaults below are strong but worth confirming or iterating at
 the relevant phase. Capture changes inline rather than letting
 them drift.
 
-- **SPICE client.** **Default: `remote-viewer`** (from the
-  `virt-viewer` package; ubiquitous on Debian / Fedora). Ryll
-  is already a SPICE client and already speaks the host side
-  of vdagent clipboard
-  ([ryll/src/channels/main_channel.rs:28-38](../../../ryll/ryll/src/channels/main_channel.rs)
-  for the protocol constants; `arboard` for host clipboard
-  access), but it expects the *guest* to speak vdagent — when
-  the guest declares no `CAP_CLIPBOARD_*` capabilities, ryll
-  has no paste-as-keystrokes fallback and clipboard paste is
-  silently dropped. Our UEFI binary advertises no vdagent
-  today, so ryll cannot drive this scene. `remote-viewer`'s
-  paste-as-keystrokes fallback is what makes the scene
-  playable now. Switch to ryll once *either* (a) ryll learns a
-  paste-as-keystrokes fallback for guests without vdagent
-  (small ryll-side feature; tracked in *Future work* below),
-  or (b) the UEFI binary gains a real vdagent implementation
-  (the larger Future work milestone) — at which point the
-  fallback is unnecessary.
+- **SPICE client.** **Default: `ryll` (with the forthcoming
+  paste-as-keystrokes feature).** This is now a hard
+  prerequisite, not a default — see *Prerequisites* above for
+  the rationale. `remote-viewer` was the original default but
+  cannot drive this scene's paste step; it remains the
+  auto-spawned client in `make spice` for display + ordinary-
+  keystroke testing of any future scene that does not need
+  paste. Once ryll has paste-as-keystrokes, the operator runs
+  ryll in place of (or alongside) `remote-viewer` against the
+  same `make spice` SPICE port; Phase 2 may add a small
+  `make` target for that.
 - **CTF flag prefix.** **Default: `sextant{...}`**. Short,
   project-specific, recognisable as a flag.
 - **Placeholder decoded value.** Until later milestone content
@@ -358,20 +415,23 @@ This milestone is complete when:
 
 Items deliberately deferred out of this milestone:
 
-- **Ryll-side paste-as-keystrokes fallback.** Small ryll
-  feature: when the guest never advertises `CAP_CLIPBOARD_*`
-  (or vdagent never connects), replay clipboard paste as
-  Inputs-channel keystrokes. Matches `remote-viewer`'s
-  behaviour and lets uncalibrated-sextant switch off
-  `remote-viewer` and onto ryll for this scene without
-  waiting for a full UEFI vdagent implementation. Cheap and
-  directly improves ryll, which is a primary purpose of this
-  whole project.
 - **virtio-serial driver in `no_std` UEFI.** Required for any
   real (non-keystroke) SPICE clipboard interaction. Likely
   its own milestone; the in-binary `Serial` protocol does
   *not* speak virtio-serial and our binary has no virtio
-  drivers at all today.
+  drivers at all today. Note: `shakenfist/instar` (the
+  bare-metal sibling that implements virtio-block) has
+  partially reusable virtio scaffolding — `shared/src/virtio.rs`
+  holds spec-level constants (MMIO offsets, status bits,
+  desc flags), and the descriptor-ring + feature-negotiation
+  patterns lift cleanly. But there is no `VirtioDevice`
+  trait, `MmioState.queues` is hardcoded at length 1
+  (virtio-serial needs ≥2), and instar uses MMIO transport
+  on bare metal whereas our UEFI binary will need PCI
+  transport via the UEFI PCI I/O protocol with DMA buffer
+  allocation via Boot Services. Net: instar shaves perhaps
+  30–40 % off a from-scratch effort — still a multi-phase
+  milestone, just somewhat less terrifying.
 - **vdagent protocol implementation.** Builds on the
   virtio-serial driver. Once landed, the on-screen blob in
   step 5 of the scene above is replaced with a real SPICE

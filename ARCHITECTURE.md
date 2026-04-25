@@ -75,9 +75,26 @@ The logo pipeline: `scripts/vendor-logo.py` rasterises
 `shakenfist-logo-small.svg` via ImageMagick at 300 DPI, resizes to
 128x128, thresholds at 50% grey, then flips 2% of pixels using a PRNG
 seeded to `0x5EAFED` for reproducibility, and emits `src/logo.rs` as
-a row-major packed-bit `[u8; 2048]` const. `Renderer::draw_logo` tiles
-this bitmap as an 8x16 glyph grid, using the same phosphor-green
-palette as body text.
+a row-major packed-bit `[u8; 2048]` const. The logo and the language
+probes (below) share `Renderer::draw_text_bitmap`, which tiles a
+packed 1-bit-per-pixel bitmap as an 8x16-cell grid (one
+`BltOp::BufferToVideo` per cell, principle 6) and accepts widths and
+heights that are not multiples of the cell size.
+
+The boot sequence opens with four language-probe lines —
+`检测中文支持 ........ 失败`, `हिन्दी समर्थन की जाँच ........ विफल`,
+`Detectando soporte para español ........ FALLO`, and
+`Probing for English support ........ OK` — establishing in
+worldbuilding terms that English is no longer the default.
+`scripts/vendor-language-probes.py` rasterises each label and status
+via ImageMagick + GNU Unifont (used under SIL OFL 1.1; see
+`LICENSES/FONT_UNIFONT.txt`) at pointsize 16, packs them as
+row-major MSB-leftmost bytes, and emits `src/probes.rs`.
+`SceneStep::Probe` carries references to the bitmap pairs;
+`Renderer::draw_probe_line` composes a hybrid layout — bitmap
+label at column 0, ASCII space + dot leader ending at
+`DOT_LEADER_COL = 40`, bitmap status starting at column 41 — so
+column alignment with the rest of the boot transcript is preserved.
 
 `MARGIN_X = MARGIN_Y = 16` overscan margins are applied as a
 renderer-level pixel offset added to every `draw_glyph` call, keeping

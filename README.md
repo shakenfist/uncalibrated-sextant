@@ -16,8 +16,11 @@ The first-playable milestone has landed. The binary runs the full
 scene state machine — AWAITING OPERATOR screen, a scripted boot
 sequence, and a SYSTEM ONLINE parking screen — with blinking cursor,
 LFSR-driven glitch substitution, and the Shaken Fist logo rendered
-as a tiled 8x16 glyph grid in the top-right corner. On final
-shutdown, the event ring buffer is drained to the UEFI Serial
+as a tiled 8x16 glyph grid in the top-right corner. The opening
+beats now probe for Mandarin / Hindi / Spanish / English language
+support (three FAILED in their own scripts, English OK), establishing
+that English is no longer the default in the fictional universe. On
+final shutdown, the event ring buffer is drained to the UEFI Serial
 protocol as plain text, groundwork for the eventual gRPC-over-serial
 transport. See [DESIGN.md](DESIGN.md) for the channel mapping,
 two-channel test architecture, and aesthetic direction.
@@ -36,6 +39,7 @@ make qemu            # build, assemble ESP, launch interactive QEMU window
 make release         # produce dist/uncalibrated-sextant.{img,qcow2}
 make release-verify  # headless boot check of both release artifacts
 make screenshot      # regenerate docs/images/boot-sequence.png via QMP
+make vendor-probes   # regenerate src/probes.rs from the vendor script
 make build           # build the UEFI binary only (Docker, no host toolchain)
 make clean           # remove dist/, target/, and the named Docker volume
 ```

@@ -11,6 +11,7 @@
 mod cursor;
 mod event;
 mod logo;
+mod probes;
 mod renderer;
 mod scene;
 mod serial;

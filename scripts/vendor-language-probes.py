@@ -113,6 +113,9 @@ def pack_rows(rows: list[list[int]], width: int) -> list[int]:
 
 def emit_const(name: str, packed: list[int], width: int, trailing_blank: bool = True) -> None:
     n = len(packed)
+    # `rustfmt::skip` preserves the row-per-line layout below, which is
+    # what makes the bitmaps visually inspectable in the source.
+    print('#[rustfmt::skip]')
     print(f'pub const PROBE_{name}_BITMAP: [u8; {n}] = [')
     row_bytes = (width + 7) // 8
     for r in range(CELL_HEIGHT):
@@ -139,15 +142,14 @@ def main() -> None:
         '// do not edit by hand. Regenerate via `make vendor-probes` after\n'
         '// editing the PROBES table at the top of the vendor script.\n'
         '//\n'
-        '// Source font: GNU Unifont (BSD-2-Clause / SIL OFL,\n'
-        '// `apt install fonts-unifont`). Rendered via ImageMagick at\n'
+        '// Source font: GNU Unifont, used under SIL OFL 1.1\n'
+        '// (`apt install fonts-unifont`). Rendered via ImageMagick at\n'
         '// pointsize 16 with anti-aliasing disabled, then cropped to\n'
-        '// 16 rows. Storage is row-major MSB-leftmost packed bits;\n'
-        '// each row is padded to the next byte boundary so the renderer\n'
-        '// can consume these via the same blit primitive as src/logo.rs.\n'
+        '// 16 rows so each bitmap is exactly one renderer cell tall.\n'
+        '// Storage is row-major MSB-leftmost packed bits; each row is\n'
+        '// padded to the next byte boundary so the renderer can consume\n'
+        '// these via the same blit primitive as src/logo.rs.\n'
     )
-    print(f'pub const PROBE_HEIGHT_PX: usize = {CELL_HEIGHT};')
-    print()
 
     flat = [
         (f'{name}_{kind}', text)

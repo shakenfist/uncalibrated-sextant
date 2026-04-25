@@ -173,12 +173,14 @@ impl Renderer {
     /// at text-cell position (`col`, `row`). Set bits render as
     /// foreground, clear bits as background.
     ///
-    /// The bitmap must be row-major, MSB-leftmost, with `width_px`
-    /// and `height_px` both multiples of `CELL_W` and `CELL_H`
-    /// respectively. One `BltOp::BufferToVideo` per tile (principle
-    /// 6 — the logo is a grid of repeated tile sizes so the server
-    /// can dictionary-match).
-    pub fn draw_logo(
+    /// The bitmap must be row-major, MSB-leftmost, with each row
+    /// padded to the next byte boundary. Width and height in pixels
+    /// may be any positive value; trailing partial tiles render
+    /// whatever bits the byte padding supplies (the vendor scripts
+    /// arrange those to be zeros). One `BltOp::BufferToVideo` per
+    /// tile (principle 6 — the repeated tile size lets the SPICE
+    /// server dictionary-match).
+    pub fn draw_text_bitmap(
         &mut self,
         bitmap: &[u8],
         width_px: usize,
@@ -186,14 +188,17 @@ impl Renderer {
         col: usize,
         row: usize,
     ) {
-        let tiles_x = width_px / CELL_W;
-        let tiles_y = height_px / CELL_H;
-        let bitmap_row_bytes = width_px / 8;
+        let bitmap_row_bytes = width_px.div_ceil(CELL_W);
+        let tiles_x = bitmap_row_bytes;
+        let tiles_y = height_px.div_ceil(CELL_H);
         for ty in 0..tiles_y {
             for tx in 0..tiles_x {
                 let mut buf = [BG; CELL_W * CELL_H];
                 for ly in 0..CELL_H {
                     let src_row = ty * CELL_H + ly;
+                    if src_row >= height_px {
+                        break;
+                    }
                     let byte = bitmap[src_row * bitmap_row_bytes + tx];
                     for lx in 0..CELL_W {
                         if byte & (0x80 >> lx) != 0 {
@@ -211,6 +216,39 @@ impl Renderer {
                 });
             }
         }
+    }
+
+    /// Render a hybrid language-probe line: bitmap label, ASCII dot
+    /// leader ending at `DOT_LEADER_COL`, bitmap status starting at
+    /// `DOT_LEADER_COL + 1`.
+    ///
+    /// Label and status bitmaps may be any pixel width; their
+    /// rendered cell extent rounds up to the next byte boundary.
+    /// The dot leader and the single space separator render via the
+    /// per-glyph ASCII path so column alignment with the rest of
+    /// the boot transcript is preserved (principle 6 throughout).
+    pub fn draw_probe_line(
+        &mut self,
+        label_bitmap: &[u8],
+        label_width_px: usize,
+        status_bitmap: &[u8],
+        status_width_px: usize,
+        row: usize,
+    ) {
+        self.draw_text_bitmap(label_bitmap, label_width_px, CELL_H, 0, row);
+
+        let label_end_cell = label_width_px.div_ceil(CELL_W);
+        let dot_start = label_end_cell + 1;
+        let dot_end = DOT_LEADER_COL;
+        if dot_start < dot_end {
+            self.draw_glyph(' ', label_end_cell, row);
+            for col in dot_start..dot_end {
+                self.draw_glyph('.', col, row);
+            }
+        }
+
+        let status_col = DOT_LEADER_COL + 1;
+        self.draw_text_bitmap(status_bitmap, status_width_px, CELL_H, status_col, row);
     }
 
     /// Render a telemetry line: `LABEL .......... STATUS`.

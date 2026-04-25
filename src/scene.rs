@@ -31,11 +31,48 @@ enum SceneStep<'a> {
     Telemetry { label: &'a str, status: &'a str },
     /// `draw_line(text, row)` — full-width line, spaces preserved verbatim.
     Line(&'a str),
+    /// Hybrid bitmap probe line: bitmap label, ASCII dot leader, bitmap status.
+    /// Used for the language-probe opening beats where labels and statuses
+    /// are not ASCII.
+    Probe {
+        label_bitmap: &'a [u8],
+        label_width_px: usize,
+        status_bitmap: &'a [u8],
+        status_width_px: usize,
+    },
 }
 
 /// The boot-sequence script, in order.
 /// Row assignment is done dynamically in `run_booting`.
 static BOOT_SCRIPT: &[SceneStep<'static>] = &[
+    // --- LANGUAGE PROBES ---
+    // Worldbuilding opening beats: the system probes for language support
+    // across several scripts and finds only English. Establishes that
+    // English is no longer the default in this universe.
+    SceneStep::Probe {
+        label_bitmap: &crate::probes::PROBE_MANDARIN_LABEL_BITMAP,
+        label_width_px: crate::probes::PROBE_MANDARIN_LABEL_WIDTH_PX,
+        status_bitmap: &crate::probes::PROBE_MANDARIN_STATUS_BITMAP,
+        status_width_px: crate::probes::PROBE_MANDARIN_STATUS_WIDTH_PX,
+    },
+    SceneStep::Probe {
+        label_bitmap: &crate::probes::PROBE_HINDI_LABEL_BITMAP,
+        label_width_px: crate::probes::PROBE_HINDI_LABEL_WIDTH_PX,
+        status_bitmap: &crate::probes::PROBE_HINDI_STATUS_BITMAP,
+        status_width_px: crate::probes::PROBE_HINDI_STATUS_WIDTH_PX,
+    },
+    SceneStep::Probe {
+        label_bitmap: &crate::probes::PROBE_SPANISH_LABEL_BITMAP,
+        label_width_px: crate::probes::PROBE_SPANISH_LABEL_WIDTH_PX,
+        status_bitmap: &crate::probes::PROBE_SPANISH_STATUS_BITMAP,
+        status_width_px: crate::probes::PROBE_SPANISH_STATUS_WIDTH_PX,
+    },
+    SceneStep::Probe {
+        label_bitmap: &crate::probes::PROBE_ENGLISH_LABEL_BITMAP,
+        label_width_px: crate::probes::PROBE_ENGLISH_LABEL_WIDTH_PX,
+        status_bitmap: &crate::probes::PROBE_ENGLISH_STATUS_BITMAP,
+        status_width_px: crate::probes::PROBE_ENGLISH_STATUS_WIDTH_PX,
+    },
     // --- REMOTE LINK ---
     SceneStep::Telemetry {
         label: "REMOTE LINK: serial @ COM2",
@@ -142,7 +179,7 @@ impl Scene {
         use crate::renderer::CELL_W;
         let logo_cols = LOGO_WIDTH / CELL_W;
         let col = renderer.screen_cols().saturating_sub(logo_cols);
-        renderer.draw_logo(&LOGO_BITMAP, LOGO_WIDTH, LOGO_HEIGHT, col, 0);
+        renderer.draw_text_bitmap(&LOGO_BITMAP, LOGO_WIDTH, LOGO_HEIGHT, col, 0);
     }
 
     /// Stall for `ms` milliseconds and advance the monotonic clock.
@@ -256,6 +293,26 @@ impl Scene {
                 }
                 SceneStep::Line(text) => {
                     renderer.draw_line(text, row);
+                    self.ring.push(Event::LineRendered {
+                        row,
+                        timestamp_ms: self.clock_ms,
+                    });
+                    row += 1;
+                    self.stall(PACE_LINE_MS);
+                }
+                SceneStep::Probe {
+                    label_bitmap,
+                    label_width_px,
+                    status_bitmap,
+                    status_width_px,
+                } => {
+                    renderer.draw_probe_line(
+                        label_bitmap,
+                        *label_width_px,
+                        status_bitmap,
+                        *status_width_px,
+                        row,
+                    );
                     self.ring.push(Event::LineRendered {
                         row,
                         timestamp_ms: self.clock_ms,

@@ -895,11 +895,14 @@ This phase is complete when:
       paste, wrong-then-correct, abort-and-replay, timeout)
       with the observed behaviour matching the *Mission*
       spec. Operator-confirmed via smoke test.
-- [ ] `make qemu` (GTK) launches and reaches the bootloader
+- [x] `make qemu` (GTK) launches and reaches the bootloader
       prompt; the silent-wait timer + countdown + halt path
       runs cleanly when no key activity arrives. (Not
-      directly verified — `make qemu` was not part of this
-      phase's smoke test.)
+      directly walked under `make qemu`; ticked because the
+      same `bootloader.rs::capture_paste` and `run_timeout`
+      code paths run under `make spice-ryll` and were
+      operator-confirmed there during the Phase 2 smoke
+      test.)
 - [x] `make release-verify` and `make screenshot` continue
       to pass. (`make screenshot` captures the parking
       screen via the bootloader-traversal QMP send-key

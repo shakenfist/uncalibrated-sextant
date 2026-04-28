@@ -122,6 +122,30 @@ impl Renderer {
         }
     }
 
+    /// Render a string of text starting at the given text-cell column
+    /// on `row`. Per-glyph (principle 6); calls `draw_glyph` once per
+    /// character.
+    #[allow(dead_code)]
+    pub fn draw_text_at(&mut self, text: &str, col: usize, row: usize) {
+        for (i, ch) in text.chars().enumerate() {
+            self.draw_glyph(ch, col + i, row);
+        }
+    }
+
+    /// Clear an entire text row, edge to edge between the horizontal
+    /// margins, to background. One BltOp::VideoFill per call.
+    #[allow(dead_code)]
+    pub fn clear_row(&mut self, row: usize) {
+        let px = MARGIN_X;
+        let py = MARGIN_Y + row * CELL_H;
+        let dims = (self.width.saturating_sub(2 * MARGIN_X), CELL_H);
+        let _ = self.gop.blt(BltOp::VideoFill {
+            color: BG,
+            dest: (px, py),
+            dims,
+        });
+    }
+
     /// Render raw glyph bytes at the given text-cell position.
     ///
     /// Used by the cursor subsystem to draw canonical and broken-variant

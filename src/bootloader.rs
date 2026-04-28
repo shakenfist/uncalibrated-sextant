@@ -113,6 +113,12 @@ struct BootloaderScene<'a> {
     /// True once the diegetic nudge has been rendered. Used so subsequent
     /// retries clear (and re-render) the nudge row alongside the prompt.
     nudge_rendered: bool,
+    /// Row the wrong-paste indicator lives on (one below the input
+    /// row). Rendered in-place on each wrong-paste outcome so the
+    /// count updates from "1 of 3" to "2 of 3" without ghost digits.
+    /// Set by `run_blob_and_paste` before the paste loop; the initial
+    /// value here is a placeholder that is overwritten before use.
+    wrong_indicator_row: usize,
 }
 
 /// Entry point for the locked-bootloader sub-state-machine.
@@ -141,6 +147,9 @@ pub fn run(
         prompt_row: start_row + 2,
         nudge_row: start_row + 3,
         nudge_rendered: false,
+        // Placeholder; `run_blob_and_paste` sets this to `input_row + 1`
+        // (i.e. `start_row + 7`) before the paste loop begins.
+        wrong_indicator_row: start_row + 7,
     };
 
     scene.render_telemetry_preamble();
@@ -376,6 +385,7 @@ impl<'a> BootloaderScene<'a> {
         let intro_row = self.start_row + 2;
         let blob_row = self.start_row + 4;
         let input_row = self.start_row + 6;
+        self.wrong_indicator_row = input_row + 1;
 
         // Intro line.
         self.renderer.draw_text_at(
@@ -438,32 +448,48 @@ impl<'a> BootloaderScene<'a> {
                         // silent.
                         self.run_timeout();
                     }
-                    // Re-render the input line in place with the
-                    // wrong-attempt suffix. The echo is wiped by
-                    // `clear_row`.
+                    // Wipe the previous echo and re-render the bare
+                    // input prompt (no suffix on this row). The next
+                    // `capture_paste` call echoes fresh from
+                    // `input_col_start` with no row contention.
                     self.renderer.clear_row(input_row);
                     self.renderer.draw_text_at(INPUT_PROMPT, 0, input_row);
-                    let mut col = INPUT_PROMPT.len();
+                    self.ring.push(Event::LineRendered {
+                        row: input_row,
+                        timestamp_ms: *self.clock_ms,
+                    });
+
+                    // Render `(wrong, attempt N of 3)` on the
+                    // indicator row below the input prompt. Clear it
+                    // first so the digit count updates in place
+                    // without ghost characters (e.g. "1 of 3" ->
+                    // "2 of 3").
+                    self.renderer.clear_row(self.wrong_indicator_row);
+                    let mut col = 0;
                     self.renderer
-                        .draw_text_at("(wrong, attempt ", col, input_row);
+                        .draw_text_at("(wrong, attempt ", col, self.wrong_indicator_row);
                     col += "(wrong, attempt ".len();
                     let mut nbuf = [0u8; 10];
                     let nlen = format_u32(self.wrong_paste_count, &mut nbuf);
                     for &b in &nbuf[..nlen] {
-                        self.renderer.draw_glyph(b as char, col, input_row);
+                        self.renderer
+                            .draw_glyph(b as char, col, self.wrong_indicator_row);
                         col += 1;
                     }
-                    self.renderer.draw_text_at(" of ", col, input_row);
+                    self.renderer
+                        .draw_text_at(" of ", col, self.wrong_indicator_row);
                     col += " of ".len();
                     let mut lbuf = [0u8; 10];
                     let llen = format_u32(WRONG_PASTE_LIMIT, &mut lbuf);
                     for &b in &lbuf[..llen] {
-                        self.renderer.draw_glyph(b as char, col, input_row);
+                        self.renderer
+                            .draw_glyph(b as char, col, self.wrong_indicator_row);
                         col += 1;
                     }
-                    self.renderer.draw_glyph(')', col, input_row);
+                    self.renderer.draw_glyph(')', col, self.wrong_indicator_row);
+                    self.note_row(self.wrong_indicator_row);
                     self.ring.push(Event::LineRendered {
-                        row: input_row,
+                        row: self.wrong_indicator_row,
                         timestamp_ms: *self.clock_ms,
                     });
                     // Loop: capture_paste resets to its own input
@@ -540,12 +566,12 @@ impl<'a> BootloaderScene<'a> {
                 }
             } else {
                 idle_ms += POLL_MS;
-                // The silent-wait timer applies only when no
-                // characters have arrived yet. Once any printable
-                // has been captured, the wrong-paste counter is the
-                // gate; partial half-typed pastes do not silently
-                // time out.
-                if len == 0 && idle_ms >= PASTE_SILENT_WAIT_MS {
+                // 60 s without any key arriving triggers timeout
+                // regardless of buffer state — covers the operator-
+                // walked-away-mid-paste and ryll-disconnected-mid-
+                // paste cases as well as the never-started case.
+                // `idle_ms` resets on each successful poll_key above.
+                if idle_ms >= PASTE_SILENT_WAIT_MS {
                     return PasteOutcome::Timeout;
                 }
             }

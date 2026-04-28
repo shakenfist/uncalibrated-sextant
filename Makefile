@@ -1,4 +1,4 @@
-.PHONY: build clean qemu spice release release-verify screenshot vendor-probes
+.PHONY: build clean qemu spice spice-ryll release release-verify screenshot vendor-probes
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -12,6 +12,10 @@ qemu: build
 spice: build
 	./scripts/mkesp.sh
 	./scripts/spice.sh dist/esp.img
+
+spice-ryll: build
+	./scripts/mkesp.sh
+	./scripts/spice-ryll.sh dist/esp.img
 
 release: build
 	./scripts/mkesp.sh

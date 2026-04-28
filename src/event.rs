@@ -31,7 +31,6 @@ impl Phase {
 
 /// Operator's choice at the locked-bootloader R/I/A prompt.
 #[derive(Copy, Clone, Debug)]
-#[allow(dead_code)]
 pub enum BootloaderChoice {
     /// Operator chose (R)etry — re-run the decryption attempt.
     Retry,
@@ -71,7 +70,6 @@ pub enum Event {
         timestamp_ms: u64,
     },
     /// Operator made a choice at the locked-bootloader R/I/A prompt.
-    #[allow(dead_code)]
     BootloaderDecision {
         choice: BootloaderChoice,
         /// 1-indexed count of times the prompt has been rendered so far.
@@ -79,7 +77,6 @@ pub enum Event {
         timestamp_ms: u64,
     },
     /// A paste was received and validated at the awaiting-payload prompt.
-    #[allow(dead_code)]
     PasteReceived {
         /// Number of bytes in the paste (excluding any trailing CR/LF terminator).
         len: usize,
@@ -88,7 +85,6 @@ pub enum Event {
         timestamp_ms: u64,
     },
     /// The silent-wait timer elapsed; the visible countdown is about to begin.
-    #[allow(dead_code)]
     BootloaderTimeout { timestamp_ms: u64 },
 }
 

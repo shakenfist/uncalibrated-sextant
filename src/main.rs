@@ -8,6 +8,7 @@
 #![no_main]
 #![no_std]
 
+mod bootloader;
 mod cursor;
 mod event;
 mod logo;

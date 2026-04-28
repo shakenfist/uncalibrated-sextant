@@ -125,7 +125,6 @@ impl Renderer {
     /// Render a string of text starting at the given text-cell column
     /// on `row`. Per-glyph (principle 6); calls `draw_glyph` once per
     /// character.
-    #[allow(dead_code)]
     pub fn draw_text_at(&mut self, text: &str, col: usize, row: usize) {
         for (i, ch) in text.chars().enumerate() {
             self.draw_glyph(ch, col + i, row);
@@ -134,7 +133,6 @@ impl Renderer {
 
     /// Clear an entire text row, edge to edge between the horizontal
     /// margins, to background. One BltOp::VideoFill per call.
-    #[allow(dead_code)]
     pub fn clear_row(&mut self, row: usize) {
         let px = MARGIN_X;
         let py = MARGIN_Y + row * CELL_H;

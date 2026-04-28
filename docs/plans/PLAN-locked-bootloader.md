@@ -270,7 +270,7 @@ them drift.
 | Phase | Plan | Status |
 |-------|------|--------|
 | 1. SPICE-client testing infrastructure | [PLAN-locked-bootloader-phase-01-spice-infra.md](PLAN-locked-bootloader-phase-01-spice-infra.md) | Complete (commits a7b261d + docs commit; remote-viewer paste-as-keystrokes finding documented in phase plan's *Outcome* section) |
-| 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Not started |
+| 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Complete (commits 7537897, ec223c5, 93ce17e, 9b3335a, afda0b0) |
 | 3. Iteration, documentation, inventory closeout | PLAN-locked-bootloader-phase-03-docs.md | Not started |
 
 ### Phase 1 sketch — SPICE-client testing infrastructure

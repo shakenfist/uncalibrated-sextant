@@ -876,46 +876,49 @@ guidance. Phase 2-specific emphases:
 
 This phase is complete when:
 
-- [ ] `Event::BootloaderDecision`, `Event::PasteReceived`,
+- [x] `Event::BootloaderDecision`, `Event::PasteReceived`,
       and `Event::BootloaderTimeout` exist in `src/event.rs`,
       have stable lowercase tags, and are emitted by the
       bootloader module at the right state transitions.
-- [ ] `src/bootloader.rs` exists and contains the full
+- [x] `src/bootloader.rs` exists and contains the full
       state machine (telemetry preamble → prompt → retry /
       ignore / abort → blob → awaiting paste → success /
       timeout). All rendering goes per-glyph through the
       renderer.
-- [ ] `Renderer::clear_row` and `Renderer::draw_text_at`
+- [x] `Renderer::clear_row` and `Renderer::draw_text_at`
       exist and are used by the bootloader module.
-- [ ] `BOOT_SCRIPT` is split into PRE / POST slices and
+- [x] `BOOT_SCRIPT` is split into PRE / POST slices and
       `Scene::run_booting` calls `bootloader::run` between
       them. `EMERGENCY SAFE BOOT COMPLETE` renders only on
       the success path.
-- [ ] `make spice` walks all four flow paths (correct
+- [x] `make spice-ryll` walks all four flow paths (correct
       paste, wrong-then-correct, abort-and-replay, timeout)
       with the observed behaviour matching the *Mission*
-      spec.
+      spec. Operator-confirmed via smoke test.
 - [ ] `make qemu` (GTK) launches and reaches the bootloader
       prompt; the silent-wait timer + countdown + halt path
-      runs cleanly when no key activity arrives.
-- [ ] `make release-verify` and `make screenshot` continue
-      to pass. (`make screenshot` either captures the
-      parking screen via the bootloader-traversal extension,
-      or captures the prompt screen via the documented
-      fallback — whichever path Phase 2 lands.)
-- [ ] `dist/serial.log` after a successful run contains
+      runs cleanly when no key activity arrives. (Not
+      directly verified — `make qemu` was not part of this
+      phase's smoke test.)
+- [x] `make release-verify` and `make screenshot` continue
+      to pass. (`make screenshot` captures the parking
+      screen via the bootloader-traversal QMP send-key
+      sequence; screenshot regenerated and committed in
+      step 2d.)
+- [x] `dist/serial.log` after a successful run contains
       events in this order (timestamps elided):
       `type=transition from=awaiting to=booting`, several
       `type=line` lines, `type=bootloader_decision
       choice=ignore`, `type=paste len=23 correct=true`,
       more `type=line` lines, `type=transition from=booting
       to=parked`, then post-keypress `type=keypress` and
-      `type=transition`.
-- [ ] `pre-commit run --all-files` exits 0.
-- [ ] `README.md`, `AGENTS.md`, and `ARCHITECTURE.md` cover
+      `type=transition`. Operator confirmed via smoke test.
+- [x] `pre-commit run --all-files` exits 0.
+- [x] `README.md`, `AGENTS.md`, and `ARCHITECTURE.md` cover
       the new scene at the level specified in *Mission §5*.
-- [ ] Master plan execution table row 2 shows *Complete*
-      with linked commits.
+      (This commit.)
+- [x] Master plan execution table row 2 shows *Complete*
+      with linked commits. (This commit.)
 
 ### Future work
 
@@ -952,10 +955,47 @@ Items deliberately deferred:
   long timeout (5 minutes?) might be a kindness for CI
   regressions where neither input nor abort arrives.
   Master-plan future work.
+- **Wrong-paste-suffix overlap.** If the paste buffer
+  contains a string that is a strict prefix or suffix of
+  the correct `sextant{HELLO_OPERATOR}` target, the
+  re-prompt suffix `(wrong, attempt N of 3)` renders
+  immediately after the operator's echoed input rather than
+  on a clearly separate region. In a future iteration,
+  clearing the echo portion before rendering the suffix
+  would prevent visual ambiguity. Phase 3 cosmetic polish.
+- **Partial-paste-no-newline indecision hang.** If the
+  operator pastes a partial string (e.g. stops mid-paste
+  without the ryll Enter-scancode terminator), the capture
+  loop waits at the awaiting-paste state indefinitely — the
+  silent-wait timer only fires on an empty buffer, and the
+  partial paste has primed it. This is consistent with the
+  plan's intent ("partial half-typed pastes do not silently
+  time out — they fail by terminator-or-buffer-full") but
+  can read as a hang to an operator who abandons a partial
+  paste mid-way. A secondary timeout or a dedicated
+  "partial paste detected" re-prompt is Phase 3 behavioural
+  polish.
 
 ### Bugs fixed during this work
 
-(Populated during execution.)
+1. **`Ctrl+Shift+V` is a UX footgun.** The operator's first instinct
+   at the paste prompt is `Ctrl+Shift+V` — the standard paste
+   shortcut in every terminal emulator on Linux. Ryll's paste-as-
+   keystrokes shortcut is `Ctrl+Alt+V` (deliberately different, to
+   avoid the terminal clash). Pressing `Ctrl+Shift+V` sends those
+   three literal keystrokes to the guest rather than triggering
+   paste, which results in either garbage in the paste buffer or
+   apparent silence. Mitigated by an explicit "NOT `Ctrl+Shift+V`"
+   reminder in the `make spice-ryll` launch banner and called out in
+   README.md and ARCHITECTURE.md.
+
+2. **Mac keyboards / Option key mapping.** On a Mac keyboard plugged
+   into the host (or via XRDP / Kasm), the Option key may or may not
+   map to Alt depending on the active keymap layer. This means
+   `Ctrl+Alt+V` may silently fail to trigger paste on Mac hardware.
+   The *Menu → Paste* GUI path in ryll is a clean workaround that
+   bypasses the keyboard-mapping question entirely, and is documented
+   in README.md as the recommended fallback.
 
 ### Documentation index maintenance
 

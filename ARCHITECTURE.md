@@ -121,6 +121,81 @@ The narrator-leak parentheticals described in DESIGN.md's
 default boot sequence. This is deliberate: they are deferred pending
 a diagnostic-mode mechanism that will gate them in a future phase.
 
+The locked-bootloader scene (Phase 2 of the locked-bootloader
+milestone) added `src/bootloader.rs`, a self-contained sub-state-
+machine that runs mid-`Scene::run_booting`. `BOOT_SCRIPT` is split
+into `BOOT_SCRIPT_PRE` (language probes through `SENSORIUM: nominal`)
+and `BOOT_SCRIPT_POST` (the `EMERGENCY SAFE BOOT COMPLETE` line).
+`run_booting` walks `BOOT_SCRIPT_PRE`, then calls `bootloader::run`
+with shared mutable references to the renderer, ring buffer, and the
+scene clock counter (`clock_ms`), then assigns `row = next_row` from
+the returned `BootloaderOutcome::Continue` and walks
+`BOOT_SCRIPT_POST` starting on that row.
+
+The bootloader's internal state machine runs in this order: (1)
+telemetry preamble — two `draw_telemetry_line` calls emitting
+`Advanced b64 cryptographic coprocessor: OFFLINE` and `NIST 800-53
+SC-28(1) Secret hardening: DISABLED BY CONFIGURATION`, each paced at
+`PACE_LINE_MS`; (2) R/I/A prompt loop — polls indefinitely for
+`r`/`i`/`a` (case-insensitive), with no indecision timeout; (3) on
+Retry, animated `Retrying decryption` dot leader (eight dots, 200 ms
+each), clear-and-re-render the prompt in place with an attempt counter
+`(attempt N)`, plus a sticky nudge after five retries; (4) on Abort,
+cold-reset via `uefi::runtime::reset(ResetType::COLD, ...)` — the
+call is `-> !`; (5) on Ignore, blob screen rendering then paste
+capture into a fixed `[u8; 64]` buffer; (6) on correct paste, clear
+the scene region, render `Booting...`, stall `BOOT_PAUSE_MS`, return
+`Continue { next_row }`; (7) on wrong-paste-cap-reached or
+silent-wait-elapsed, visible 30 s countdown (in-place two-digit
+update per tick) then `BOOTLOADER UNRECOVERABLE. SHUTTING DOWN.`
+halt, then `uefi::runtime::reset(ResetType::SHUTDOWN, ...)`.
+
+Two independent counters live in the state struct:
+`prompt_attempt` (1-indexed count of times the R/I/A prompt has
+rendered — incremented on every retry) and `wrong_paste_count` (count
+of wrong pastes received at the awaiting-payload prompt). They are
+deliberately separate: conflating them would mislead both the operator
+and Ryll's future parser, since a retry and a wrong paste mean
+different things at different stages of the flow.
+
+Three new `Event` variants were added to `src/event.rs` for the
+bootloader scene, each with a stable lowercase tag in the serial
+drain:
+
+- `Event::BootloaderDecision { choice: BootloaderChoice, attempt: u32, timestamp_ms }` —
+  emitted after each R/I/A keypress. `BootloaderChoice` is `Retry`,
+  `Ignore`, or `Abort`, with `tag()` returning `"retry"`, `"ignore"`,
+  `"abort"`. Serial format: `type=bootloader_decision choice=<tag>
+  attempt=<n>`.
+- `Event::PasteReceived { len: usize, correct: bool, timestamp_ms }` —
+  emitted on Enter or buffer-fill at the awaiting-paste prompt.
+  `correct` carries the validation result explicitly so a parser does
+  not have to reconstruct it from the surrounding event sequence.
+  Serial format: `type=paste len=<n> correct=<true|false>`.
+- `Event::BootloaderTimeout { timestamp_ms }` — emitted when the
+  silent-wait timer elapses (60 s idle with buffer empty) or when the
+  wrong-paste cap is reached, just before the visible countdown begins.
+  Serial format: `type=bootloader_timeout`.
+
+The existing `Phase` enum (`Awaiting`, `Booting`, `Parked`) is
+unchanged. The bootloader scene plays entirely within `Phase::Booting`
+and emits the new variants for its diagnostic vocabulary.
+
+Two renderer helpers were added alongside the bootloader module
+(`src/renderer/mod.rs`): `clear_row`, which issues one
+`BltOp::VideoFill` over the writable row (preserving the horizontal
+overscan margins), and `draw_text_at`, which blits a string starting
+at an arbitrary text-cell column one `draw_glyph` per character
+(principle 6). Both are used heavily by the bootloader's in-place
+update logic.
+
+The canonical client for the locked-bootloader scene is ryll
+(`make spice-ryll`), not remote-viewer — remote-viewer cannot deliver
+clipboard paste as Inputs-channel keystrokes when no guest-side
+vdagent is present. See the *Locked-bootloader scene* subsection in
+README.md for the paste shortcut (`Ctrl+Alt+V`, not `Ctrl+Shift+V`)
+and the four flow paths.
+
 Phase 6 added `src/serial.rs` — two Serial-protocol writers sharing a
 `with_serial` helper that briefly opens
 `uefi::proto::console::serial::Serial` via

@@ -12,19 +12,20 @@ have to verify before you can trust them.
 
 ## Status
 
-The first-playable milestone has landed. The binary runs the full
-scene state machine — a wordless lone-cursor "awaiting" screen, a
-scripted boot sequence, and a SYSTEM ONLINE parking screen — with
-blinking cursor, LFSR-driven glitch substitution, and the Shaken Fist
-logo rendered as a tiled 8x16 glyph grid in the top-right corner. The
-opening beats probe for Mandarin / Hindi / Spanish / English language
-support (the three non-English probes report failure in their own
-scripts, English OK), establishing that English is no longer the
-default in the fictional universe. On
-final shutdown, the event ring buffer is drained to the UEFI Serial
-protocol as plain text, groundwork for the eventual gRPC-over-serial
-transport. See [DESIGN.md](DESIGN.md) for the channel mapping,
-two-channel test architecture, and aesthetic direction.
+The first-playable milestone and the locked-bootloader scene (Phase 2
+of the locked-bootloader milestone) have landed. The binary runs the
+full scene state machine — a wordless lone-cursor "awaiting" screen, a
+scripted boot sequence with the locked-bootloader sub-scene, and a
+SYSTEM ONLINE parking screen — with blinking cursor, LFSR-driven glitch
+substitution, and the Shaken Fist logo rendered as a tiled 8x16 glyph
+grid in the top-right corner. The opening beats probe for Mandarin /
+Hindi / Spanish / English language support (the three non-English probes
+report failure in their own scripts, English OK), establishing that
+English is no longer the default in the fictional universe. On final
+shutdown, the event ring buffer is drained to the UEFI Serial protocol
+as plain text, groundwork for the eventual gRPC-over-serial transport.
+See [DESIGN.md](DESIGN.md) for the channel mapping, two-channel test
+architecture, and aesthetic direction.
 
 ## What it looks like
 
@@ -69,12 +70,67 @@ cleanly. This is the opposite of the instinct from `make qemu`.
 If port 5900 is already in use, override with
 `SPICE_PORT=5901 make spice`.
 
-Note on current scope: Phase 1 confirmed SPICE Display and ordinary
-keystrokes work. The first scene that requires SPICE clipboard
-(the locked-bootloader scene) is blocked on ryll gaining a
-paste-as-keystrokes fallback for guests without vdagent; see
-[docs/plans/PLAN-locked-bootloader.md](docs/plans/PLAN-locked-bootloader.md)
-Prerequisites for full context.
+### Locked-bootloader scene
+
+The locked-bootloader scene plays mid-boot, between the
+`SENSORIUM: nominal` telemetry line and `EMERGENCY SAFE BOOT
+COMPLETE`. It is the first scene that exercises SPICE clipboard
+paste as a real channel test.
+
+**Operator UX.** The scene opens with two telemetry lines
+establishing a diegetic failure (`Advanced b64 cryptographic
+coprocessor: OFFLINE` and `NIST 800-53 SC-28(1) Secret hardening:
+DISABLED BY CONFIGURATION`), then presents a three-option prompt:
+
+```
+Decryption of next-stage bootloader failed. (R)etry, (I)gnore, or (A)bort?
+```
+
+- **(R)etry** — plays an animated `Retrying decryption........`
+  leader (eight dots, 200 ms each), then re-renders the prompt
+  in place with an attempt counter `(attempt N)`. After five
+  retries a sticky note appears: `Continued retry will not change
+  the outcome.`
+- **(I)gnore** — advances to the blob screen.
+- **(A)bort** — cold-resets the VM; the run replays from firmware.
+
+**Blob screen.** Selecting Ignore shows the encoded payload:
+
+```
+c2V4dGFudHtIRUxMT19PUEVSQVRPUn0=
+```
+
+Decode it externally (`echo c2V4dGFudHtIRUxMT19PUEVSQVRPUn0= | base64 -d`
+gives `sextant{HELLO_OPERATOR}`) and paste the decoded value back
+to continue boot.
+
+**Canonical client: ryll, not remote-viewer.** `remote-viewer`
+cannot deliver a clipboard paste as Inputs-channel keystrokes
+when no guest-side vdagent is present. Use `make spice-ryll`,
+which spawns ryll with `--enable-paste-as-keystrokes`.
+
+**Paste shortcut: `Ctrl+Alt+V`.** This is ryll's paste-as-keystrokes
+shortcut. Do **not** use `Ctrl+Shift+V` — that is the obvious
+first guess (matching most terminal emulators) but it is not what
+ryll binds, and the keystrokes will arrive at the guest as literal
+Ctrl+Shift+V rather than triggering paste. The *Menu → Paste*
+option in ryll's UI always works and avoids the keyboard-mapping
+question entirely (useful on Mac keyboards where Option/Alt mapping
+depends on the keymap layer).
+
+**Four flow paths:**
+
+- **Correct paste** — `Booting...` appears, boot continues through
+  `EMERGENCY SAFE BOOT COMPLETE` to the parking screen.
+- **Wrong paste** — the input line re-renders in place with
+  `(wrong, attempt N of 3)`; after three wrong pastes the
+  visible countdown begins immediately.
+- **Abort** — cold reset; the VM restarts and the scene replays
+  from the beginning.
+- **Timeout** — after 60 s of silence at the paste prompt a
+  visible countdown appears (`Awaiting decoded payload. Aborting
+  in NN...`, counting from 30 to 00 at 1 Hz), then
+  `BOOTLOADER UNRECOVERABLE. SHUTTING DOWN.`, then ACPI shutdown.
 
 Host dependencies for `make qemu` and `make release`: `qemu-system-x86_64`,
 `ovmf`, and `qemu-utils` (for `qemu-img`). Docker remains the only

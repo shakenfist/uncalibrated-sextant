@@ -271,7 +271,7 @@ them drift.
 |-------|------|--------|
 | 1. SPICE-client testing infrastructure | [PLAN-locked-bootloader-phase-01-spice-infra.md](PLAN-locked-bootloader-phase-01-spice-infra.md) | Complete (commits a7b261d + docs commit; remote-viewer paste-as-keystrokes finding documented in phase plan's *Outcome* section) |
 | 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Complete (commits 7537897, ec223c5, 93ce17e, 9b3335a, afda0b0) |
-| 3. Iteration, documentation, inventory closeout | PLAN-locked-bootloader-phase-03-docs.md | Not started |
+| 3. Iteration, documentation, inventory closeout | [PLAN-locked-bootloader-phase-03-docs.md](PLAN-locked-bootloader-phase-03-docs.md) | Complete (commits 50e7f96, ffa84f4, 3a4f7aa, plus this closeout commit) |
 
 ### Phase 1 sketch — SPICE-client testing infrastructure
 
@@ -388,34 +388,53 @@ verbatim. Phase-specific emphases:
 
 This milestone is complete when:
 
-- [ ] `make spice` opens a `remote-viewer` window that
-      displays the binary's GOP output.
-- [ ] The new scene renders the b64 / NIST telemetry lines,
+- [x] `make spice` opens a `remote-viewer` window that
+      displays the binary's GOP output. *(Phase 1, commit
+      a7b261d.)*
+- [x] The new scene renders the b64 / NIST telemetry lines,
       the R/I/A prompt, the encoded blob, and (depending on
       path) the success message, the wrong-paste re-prompt,
       the timeout countdown, or the cold-reset Abort.
-- [ ] Pasting `sextant{HELLO_OPERATOR}` (the decoded form)
+      *(Phase 2 step 2c, commit 93ce17e; smoke-tested under
+      `make spice-ryll` at end of Phase 2.)*
+- [x] Pasting `sextant{HELLO_OPERATOR}` (the decoded form)
       into the SPICE client window after Ignore continues
       boot through `EMERGENCY SAFE BOOT COMPLETE` to the
-      parking screen.
-- [ ] Pasting incorrect content re-prompts up to three times,
+      parking screen. *(Phase 2 smoke test; also captured
+      automatically by `make screenshot` via the QMP
+      send-key driver in commit 9b3335a.)*
+- [x] Pasting incorrect content re-prompts up to three times,
       then enters the timeout / error / shutdown path.
-- [ ] Selecting Abort cold-resets the VM (the firmware boot
+      *(Phase 2 smoke test; the wrong-paste-re-prompt layout
+      polished in Phase 3 step 3a, commit ffa84f4.)*
+- [x] Selecting Abort cold-resets the VM (the firmware boot
       manager runs again and the scene replays from the
-      start).
-- [ ] Idling at the paste prompt for `60 + 30 + 5` seconds
+      start). *(Phase 2 smoke test.)*
+- [x] Idling at the paste prompt for `60 + 30 + 5` seconds
       produces a clearly visible error halt and clean ACPI
-      shutdown.
-- [ ] `make qemu` (GTK path) still launches the original
+      shutdown. *(Phase 2 smoke test confirmed; Phase 3
+      step 3a broadened the silent-wait condition to also
+      fire on partial-paste idle, commit ffa84f4.)*
+- [x] `make qemu` (GTK path) still launches the original
       scene flow; the new scene is reachable but its paste
       step times out cleanly when no SPICE client is
-      connected.
-- [ ] `make release-verify` and `make screenshot` still pass.
-- [ ] `pre-commit run --all-files` exits 0.
-- [ ] Inventory's *Text clipboard client → server* row has a
-      `binary:` plan link to this plan.
-- [ ] `README.md`, `AGENTS.md`, `ARCHITECTURE.md` describe
-      the new scene and the `make spice` path.
+      connected. *(`make qemu` confirmed reaches the
+      bootloader prompt in Phase 2 review; the operator did
+      not directly walk the 95 s silent-wait + countdown +
+      halt path under `make qemu`, but the same code path
+      runs under `make spice-ryll` and is tested there.)*
+- [x] `make release-verify` and `make screenshot` still pass.
+      *(Phase 2 step 2d adapted `make screenshot` to drive
+      the bootloader, commit 9b3335a; `make release-verify`
+      unaffected.)*
+- [x] `pre-commit run --all-files` exits 0. *(Verified at
+      every commit through Phases 1, 2, and 3.)*
+- [x] Inventory's *Text clipboard client → server* row has a
+      `binary:` plan link to this plan. *(Phase 3 step 3b,
+      commit 3a4f7aa.)*
+- [x] `README.md`, `AGENTS.md`, `ARCHITECTURE.md` describe
+      the new scene and the `make spice` path. *(Phase 2
+      step 2e, commit a1cfb1a.)*
 
 ### Future work
 

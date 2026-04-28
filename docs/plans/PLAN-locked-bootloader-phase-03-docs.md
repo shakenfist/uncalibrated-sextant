@@ -433,30 +433,36 @@ Phase-3-specific:
 
 This phase is complete when:
 
-- [ ] `src/bootloader.rs` renders the wrong-paste suffix on
+- [x] `src/bootloader.rs` renders the wrong-paste suffix on
       its own row (`input_row + 1`), not appended to the
       input prompt row. The success-path region-clear wipes
-      it via `note_row`.
-- [ ] `src/bootloader.rs::capture_paste` fires the
+      it via `note_row`. *(Step 3a, commit ffa84f4.)*
+- [x] `src/bootloader.rs::capture_paste` fires the
       silent-wait timeout on `idle_ms >= PASTE_SILENT_WAIT_MS`
       regardless of buffer length. Comment around the
-      branch reflects the new semantics.
-- [ ] An operator-driven `make spice-ryll` smoke test of
+      branch reflects the new semantics. *(Step 3a, commit
+      ffa84f4.)*
+- [x] An operator-driven `make spice-ryll` smoke test of
       the wrong-then-correct flow path confirms the suffix
       no longer overlaps the operator's typed echo.
-- [ ] `docs/spice-test-inventory.md` *Text clipboard client
+      *(Operator-confirmed at the end of step 3a, before
+      this closeout commit.)*
+- [x] `docs/spice-test-inventory.md` *Text clipboard client
       → server* row has a `binary: [...]` plan link.
-- [ ] `docs/plans/PLAN-locked-bootloader.md` Execution
+      *(Step 3b, commit 3a4f7aa.)*
+- [x] `docs/plans/PLAN-locked-bootloader.md` Execution
       table row 3 is *Complete (commits ...)* and every
       *Success criteria* item in that file is ticked.
-- [ ] `docs/plans/index.md` master plan row Status is
-      `Complete (commits ...)`.
-- [ ] `make build`, `make release-verify`, and `make
+      *(This closeout commit.)*
+- [x] `docs/plans/index.md` master plan row Status is
+      `Complete (commits ...)`. *(This closeout commit.)*
+- [x] `make build`, `make release-verify`, and `make
       screenshot` all continue to pass. `docs/images/boot-
       sequence.png` regenerated only if the captured frame
-      changed.
-- [ ] `pre-commit run --all-files` exits 0 across all
-      three commits.
+      changed. *(`make screenshot` ran during step 3a; PNG
+      was byte-identical, no regeneration committed.)*
+- [x] `pre-commit run --all-files` exits 0 across all
+      three commits. *(Verified at each commit.)*
 
 ### Future work
 

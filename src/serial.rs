@@ -76,6 +76,30 @@ pub fn drain<const N: usize>(ring: &RingBuffer<N>) {
                         "t={timestamp_ms} type=transition from={from_tag} to={to_tag}\r",
                     );
                 }
+                Event::BootloaderDecision {
+                    choice,
+                    attempt,
+                    timestamp_ms,
+                } => {
+                    let tag = choice.tag();
+                    let _ = writeln!(
+                        serial,
+                        "t={timestamp_ms} type=bootloader_decision choice={tag} attempt={attempt}\r",
+                    );
+                }
+                Event::PasteReceived {
+                    len,
+                    correct,
+                    timestamp_ms,
+                } => {
+                    let _ = writeln!(
+                        serial,
+                        "t={timestamp_ms} type=paste len={len} correct={correct}\r",
+                    );
+                }
+                Event::BootloaderTimeout { timestamp_ms } => {
+                    let _ = writeln!(serial, "t={timestamp_ms} type=bootloader_timeout\r");
+                }
             }
         }
     });

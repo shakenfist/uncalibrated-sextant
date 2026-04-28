@@ -29,6 +29,30 @@ impl Phase {
     }
 }
 
+/// Operator's choice at the locked-bootloader R/I/A prompt.
+#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
+pub enum BootloaderChoice {
+    /// Operator chose (R)etry — re-run the decryption attempt.
+    Retry,
+    /// Operator chose (I)gnore — proceed to the paste blob screen.
+    Ignore,
+    /// Operator chose (A)bort — cold-reset immediately.
+    Abort,
+}
+
+impl BootloaderChoice {
+    /// Short lowercase tag used by the serial drain's one-line-per-event
+    /// format. Kept stable so Ryll's future parser can match literally.
+    pub fn tag(&self) -> &'static str {
+        match self {
+            BootloaderChoice::Retry => "retry",
+            BootloaderChoice::Ignore => "ignore",
+            BootloaderChoice::Abort => "abort",
+        }
+    }
+}
+
 /// Events recorded into the ring buffer during a run.
 #[derive(Copy, Clone, Debug)]
 pub enum Event {
@@ -46,6 +70,26 @@ pub enum Event {
         to: Phase,
         timestamp_ms: u64,
     },
+    /// Operator made a choice at the locked-bootloader R/I/A prompt.
+    #[allow(dead_code)]
+    BootloaderDecision {
+        choice: BootloaderChoice,
+        /// 1-indexed count of times the prompt has been rendered so far.
+        attempt: u32,
+        timestamp_ms: u64,
+    },
+    /// A paste was received and validated at the awaiting-payload prompt.
+    #[allow(dead_code)]
+    PasteReceived {
+        /// Number of bytes in the paste (excluding any trailing CR/LF terminator).
+        len: usize,
+        /// Whether the paste matched the expected payload byte-exactly.
+        correct: bool,
+        timestamp_ms: u64,
+    },
+    /// The silent-wait timer elapsed; the visible countdown is about to begin.
+    #[allow(dead_code)]
+    BootloaderTimeout { timestamp_ms: u64 },
 }
 
 /// Fixed-capacity ring buffer, overwriting oldest entry on overflow.

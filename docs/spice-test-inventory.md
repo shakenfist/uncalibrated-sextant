@@ -142,7 +142,7 @@ or absent, leave it as a silent assertion.
 | Operation | Mode | Metaphorical role | Status |
 |-----------|------|-------------------|--------|
 | Text clipboard server → client (instrument copies) | set | The instrument hands the operator a payload only the outside world can read | — |
-| Text clipboard client → server (operator pastes in) | play | A message dropped in from outside — content the instrument did not generate | — |
+| Text clipboard client → server (operator pastes in) | play | A message dropped in from outside — content the instrument did not generate | binary: [locked-bootloader](plans/PLAN-locked-bootloader.md) |
 | Image clipboard | both | A picture being shown / received | — |
 | Large clipboard payload | play | The operator depositing something substantial | — |
 | Clipboard ownership negotiation | set | Quiet protocol about who is currently speaking | — |

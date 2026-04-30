@@ -33,6 +33,10 @@ const PACE_LINE_MS: u64 = 200; // after a normal line
 /// On-screen toast lifetime after a mode switch.
 const TOAST_MS: u64 = 1500;
 
+/// Per-step dwell when cycling through every available
+/// GOP mode (key '0').
+const CYCLE_DWELL_MS: u64 = 1000;
+
 /// Parking-screen prompt. Defined at module scope so `run_parked`
 /// (which draws it) and `Scene::repaint` (which redraws it after a
 /// runtime mode switch) cannot drift out of sync.
@@ -651,6 +655,69 @@ impl Scene {
         }
     }
 
+    /// Walk every available GOP mode, dwelling
+    /// `CYCLE_DWELL_MS` per step. Interruptible by any
+    /// keypress: the cycle stops, the binary settles at the
+    /// most recent mode, and a single `ModeCycle` event is
+    /// pushed naming `count` (modes switched) and
+    /// `interrupted` (whether the walk completed naturally).
+    ///
+    /// If the interrupting key is itself a mode key (`'1'`-
+    /// `'6'` or `'0'`), it is honoured by recursing into
+    /// `try_handle_mode_key`. Other keys are discarded.
+    pub(crate) fn cycle_modes(&mut self, renderer: &mut Renderer) {
+        let modes = renderer.available_modes();
+        let mut count: u32 = 0;
+        let mut interrupted_by: Option<char> = None;
+
+        'outer: for (w, h) in modes {
+            // Apply this step.
+            let (applied_w, applied_h) = renderer.set_mode(w, h);
+            self.ring.push(Event::ModeSwitch {
+                requested_w: w as u32,
+                requested_h: h as u32,
+                applied_w: applied_w as u32,
+                applied_h: applied_h as u32,
+                timestamp_ms: self.clock_ms,
+            });
+            self.repaint(renderer);
+            self.draw_toast(
+                renderer,
+                (w as u32, h as u32),
+                (applied_w as u32, applied_h as u32),
+            );
+            count += 1;
+
+            // Dwell with key polling.
+            let mut elapsed: u64 = 0;
+            while elapsed < CYCLE_DWELL_MS {
+                if let Some((ch, sc)) = poll_key() {
+                    self.ring.push(Event::Keypress {
+                        unicode: ch,
+                        scancode: sc,
+                        timestamp_ms: self.clock_ms,
+                    });
+                    interrupted_by = Some(ch);
+                    break 'outer;
+                }
+                self.tick_toast(renderer, POLL_MS);
+                stall(&mut self.clock_ms, POLL_MS);
+                elapsed += POLL_MS;
+            }
+        }
+
+        self.ring.push(Event::ModeCycle {
+            count,
+            interrupted: interrupted_by.is_some(),
+            timestamp_ms: self.clock_ms,
+        });
+
+        // Honour the interrupting key if it was a mode key.
+        if let Some(ch) = interrupted_by {
+            let _ = self.try_handle_mode_key(renderer, ch);
+        }
+    }
+
     /// Try to handle a keystroke as a mode-switch request.
     /// Returns `true` if the keystroke was a mode key and was
     /// consumed; `false` if the caller should handle it as
@@ -665,11 +732,15 @@ impl Scene {
     /// scene state at the new dimensions. Then draws a toast
     /// on the bottom row naming the applied resolution.
     ///
-    /// Key '0' (cycle) is handled in step 2c. For now this
-    /// dispatcher returns `false` for '0', so the caller
-    /// continues to treat it as a non-mode key.
+    /// Key '0' delegates to `cycle_modes`, which walks every
+    /// available GOP mode with a `CYCLE_DWELL_MS` dwell per
+    /// step and is interruptible by any keypress.
     #[allow(dead_code)] // Wired into runner sites in step 2d.
     pub(crate) fn try_handle_mode_key(&mut self, renderer: &mut Renderer, ch: char) -> bool {
+        if ch == '0' {
+            self.cycle_modes(renderer);
+            return true;
+        }
         let Some(&(_, req_w, req_h)) = MODE_KEYS.iter().find(|(c, _, _)| *c == ch) else {
             return false;
         };

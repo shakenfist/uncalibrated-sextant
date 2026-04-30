@@ -98,8 +98,6 @@ pub enum Event {
     /// Cycle-through-all-modes walk completed (or was
     /// interrupted). `count` is the number of mode switches
     /// performed during the cycle.
-    // Emitter wired in Phase 2; suppress dead-code lint until then.
-    #[allow(dead_code)]
     ModeCycle {
         count: u32,
         interrupted: bool,

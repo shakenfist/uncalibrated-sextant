@@ -194,11 +194,24 @@ them drift.
   fallback substitutions are needed for the planned bindings
   under `-vga std`.
 
-  Note: `scripts/spice.sh` and `scripts/spice-ryll.sh` both use
-  `-vga qxl`. The qxl mode list has not yet been captured;
-  recording it is deferred to Phase 2's acceptance-test step.
-  If `-vga qxl` exposes a different list, Phase 2's key-binding
-  table should be verified against it.
+  Observed under headless `qemu-system-x86_64` with `-vga qxl
+  -display none` (same OVMF + q35 args as `scripts/spice.sh`),
+  commit `f1aeac6`:
+
+  ```
+  available GOP modes: 640x480 800x480 800x600 832x624 960x640
+  1024x600 1024x768 1152x864 1152x870 1280x720 1280x760 1280x768
+  1280x800 1280x960 1280x1024 1360x768 1366x768 1400x1050
+  1440x900 1600x900 1600x1200 1680x1050 1920x1080 1920x1200
+  1920x1440 2000x2000 2048x1536 2048x2048 2560x1440 2560x1600
+  ```
+
+  The qxl and std sets are identical (30 modes each); only the
+  enumeration order differs (`-vga std` starts with `1280x800`
+  first; `-vga qxl` starts with `640x480`). All six binding
+  keys (640×480, 800×600, 1024×768, 1280×720, 1280×1024,
+  1920×1080) are present in both lists; no substitutions on the
+  planned bindings under either device. This question is closed.
 
 - **Should `0` (cycle) be interruptible?** **Default: yes.**
   Pressing any other key during the cycle stops the walk and

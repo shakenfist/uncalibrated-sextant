@@ -120,6 +120,29 @@ pub fn drain<const N: usize>(ring: &RingBuffer<N>) {
                 Event::BootloaderTimeout { timestamp_ms } => {
                     let _ = writeln!(serial, "t={timestamp_ms} type=bootloader_timeout\r");
                 }
+                Event::ModeSwitch {
+                    requested_w,
+                    requested_h,
+                    applied_w,
+                    applied_h,
+                    timestamp_ms,
+                } => {
+                    let _ = writeln!(
+                        serial,
+                        "t={timestamp_ms} type=mode_switch requested={requested_w}x{requested_h} \
+                         applied={applied_w}x{applied_h}\r",
+                    );
+                }
+                Event::ModeCycle {
+                    count,
+                    interrupted,
+                    timestamp_ms,
+                } => {
+                    let _ = writeln!(
+                        serial,
+                        "t={timestamp_ms} type=mode_cycle count={count} interrupted={interrupted}\r",
+                    );
+                }
             }
         }
     });

@@ -86,6 +86,27 @@ pub enum Event {
     },
     /// The silent-wait timer elapsed; the visible countdown is about to begin.
     BootloaderTimeout { timestamp_ms: u64 },
+    /// GOP mode switched (or attempted to switch) at the
+    /// operator's request.
+    // Emitter wired in Phase 2; suppress dead-code lint until then.
+    #[allow(dead_code)]
+    ModeSwitch {
+        requested_w: u32,
+        requested_h: u32,
+        applied_w: u32,
+        applied_h: u32,
+        timestamp_ms: u64,
+    },
+    /// Cycle-through-all-modes walk completed (or was
+    /// interrupted). `count` is the number of mode switches
+    /// performed during the cycle.
+    // Emitter wired in Phase 2; suppress dead-code lint until then.
+    #[allow(dead_code)]
+    ModeCycle {
+        count: u32,
+        interrupted: bool,
+        timestamp_ms: u64,
+    },
 }
 
 /// Fixed-capacity ring buffer, overwriting oldest entry on overflow.

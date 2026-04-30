@@ -26,6 +26,11 @@ pub(crate) const POLL_MS: u64 = 50;
 /// Pacing delays in milliseconds.
 const PACE_LINE_MS: u64 = 200; // after a normal line
 
+/// Parking-screen prompt. Defined at module scope so `run_parked`
+/// (which draws it) and `Scene::repaint` (which redraws it after a
+/// runtime mode switch) cannot drift out of sync.
+const SYSTEM_ONLINE_TEXT: &str = "SYSTEM ONLINE. AWAITING INSTRUCTIONS.";
+
 /// Stall for `ms` milliseconds and advance the monotonic clock.
 ///
 /// Free function so both `Scene` and the locked-bootloader
@@ -171,6 +176,60 @@ static BOOT_SCRIPT_POST: &[SceneStep<'static>] = &[
     SceneStep::Line("EMERGENCY SAFE BOOT COMPLETE. OPERATOR ASSISTANCE REQUIRED."),
 ];
 
+/// Snapshot of what is currently on screen, sufficient to repaint from
+/// scratch at the renderer's current dimensions. Updated by the scene
+/// runners as they play.
+///
+/// Every variant carries the indices and rows the repainter needs to
+/// replay just the right prefix of the boot scripts. Repaint never
+/// pushes ring-buffer events and never advances `clock_ms`: those
+/// describe the *original* render and are not re-emitted on a
+/// runtime mode-switch redraw.
+///
+/// `BootingBootloader` exists for totality. The locked-bootloader
+/// scene is carved out from receiving mode keystrokes (per the master
+/// plan) so a repaint should never trigger from that state in
+/// production. Were a future scene to adopt the same input shape and
+/// hit this path, repainting PRE only — leaving the bootloader's own
+/// rows blank — is the safe fallback: the bootloader owns its own
+/// drawing and a runtime mode switch from outside cannot reconstruct
+/// its sub-state-machine.
+#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)] // Phase 2 wires the dispatcher that consumes this.
+enum RepaintState {
+    /// Initial state before `run_awaiting` starts: only the chrome
+    /// (logo) has been painted.
+    Chrome,
+    /// `run_awaiting` is active: chrome + a blinking cursor at (0,0).
+    /// The next blink tick repaints the cursor naturally.
+    Awaiting,
+    /// `run_booting` is mid-PRE: `played` PRE steps have been drawn
+    /// to rows `[0, played)`.
+    BootingPre { played: usize },
+    /// `run_booting` has handed off to the locked-bootloader
+    /// sub-state-machine. Mode keys are ignored there; if a repaint
+    /// happens anyway, draw PRE only.
+    BootingBootloader { pre_played: usize },
+    /// `run_booting` is mid-POST: PRE is fully drawn at rows
+    /// `[0, pre_played)`, the bootloader returned `bootloader_next_row`,
+    /// and `post_played` POST steps have been drawn at rows
+    /// `[bootloader_next_row, bootloader_next_row + post_played)`.
+    BootingPost {
+        pre_played: usize,
+        bootloader_next_row: usize,
+        post_played: usize,
+    },
+    /// `run_parked` is active: PRE + POST are drawn, plus the
+    /// SYSTEM ONLINE row at `system_online_row`. The blinking
+    /// cursor at the end of that row is repainted by the next tick.
+    Parked {
+        pre_played: usize,
+        bootloader_next_row: usize,
+        post_played: usize,
+        system_online_row: usize,
+    },
+}
+
 /// Scene orchestrator: owns the ring buffer, cursor state, and clock.
 pub struct Scene {
     phase: Phase,
@@ -178,6 +237,9 @@ pub struct Scene {
     cursor: CursorState,
     /// Monotonic millisecond counter accumulated from stall durations.
     clock_ms: u64,
+    /// Snapshot of what is currently on screen. Updated by the scene
+    /// runners as they play; consulted by `Scene::repaint`.
+    repaint_state: RepaintState,
 }
 
 impl Scene {
@@ -188,6 +250,7 @@ impl Scene {
             ring: RingBuffer::new(),
             cursor: CursorState::new(),
             clock_ms: 0,
+            repaint_state: RepaintState::Chrome,
         }
     }
 
@@ -256,6 +319,8 @@ impl Scene {
         const CURSOR_COL: usize = 0;
         const CURSOR_ROW: usize = 0;
 
+        self.repaint_state = RepaintState::Awaiting;
+
         loop {
             // Advance cursor state by one poll interval.
             let glyph = self.cursor.tick(POLL_MS);
@@ -298,12 +363,20 @@ impl Scene {
         // repaint the logo (which the clear wiped).
         renderer.clear();
         Self::draw_chrome(renderer);
+        self.repaint_state = RepaintState::BootingPre { played: 0 };
 
         // Start rendering at row 0; each line or telemetry entry
         // advances the row counter by 1.
         let mut row: usize = 0;
 
-        row = self.play_script(renderer, BOOT_SCRIPT_PRE, row);
+        // PRE: update repaint_state after each step so a mode-switch
+        // mid-script can replay exactly the right prefix.
+        row = self.play_script(renderer, BOOT_SCRIPT_PRE, row, &mut |played| {
+            RepaintState::BootingPre { played }
+        });
+
+        let pre_played = BOOT_SCRIPT_PRE.len();
+        self.repaint_state = RepaintState::BootingBootloader { pre_played };
 
         // Hand off to the locked-bootloader sub-state-machine. It
         // takes shared mutable references to the renderer, the ring
@@ -312,8 +385,22 @@ impl Scene {
         let bootloader::BootloaderOutcome::Continue { next_row } =
             bootloader::run(renderer, &mut self.ring, &mut self.clock_ms, row);
         row = next_row;
+        let bootloader_next_row = next_row;
 
-        row = self.play_script(renderer, BOOT_SCRIPT_POST, row);
+        self.repaint_state = RepaintState::BootingPost {
+            pre_played,
+            bootloader_next_row,
+            post_played: 0,
+        };
+
+        // POST: same pattern as PRE — track played count for repaint.
+        row = self.play_script(renderer, BOOT_SCRIPT_POST, row, &mut |post_played| {
+            RepaintState::BootingPost {
+                pre_played,
+                bootloader_next_row,
+                post_played,
+            }
+        });
 
         self.ring.push(Event::SceneTransition {
             from: Phase::Booting,
@@ -327,14 +414,21 @@ impl Scene {
     /// Render a slice of `SceneStep`s starting at `start_row`, with the
     /// shared `PACE_LINE_MS` pacing between each line. Returns the next
     /// free row.
+    ///
+    /// `make_state` is called after each step has been drawn (and the
+    /// `LineRendered` event pushed) with the running count of completed
+    /// steps; the returned `RepaintState` is stored on the scene. This
+    /// keeps `repaint_state` accurate to the on-screen content even if
+    /// a future caller invokes `Scene::repaint` between steps.
     fn play_script(
         &mut self,
         renderer: &mut Renderer,
         script: &[SceneStep<'static>],
         start_row: usize,
+        make_state: &mut dyn FnMut(usize) -> RepaintState,
     ) -> usize {
         let mut row = start_row;
-        for step in script {
+        for (idx, step) in script.iter().enumerate() {
             match step {
                 SceneStep::Telemetry { label, status } => {
                     renderer.draw_telemetry_line(label, status, row);
@@ -343,6 +437,7 @@ impl Scene {
                         timestamp_ms: self.clock_ms,
                     });
                     row += 1;
+                    self.repaint_state = make_state(idx + 1);
                     stall(&mut self.clock_ms, PACE_LINE_MS);
                 }
                 SceneStep::Line(text) => {
@@ -352,6 +447,7 @@ impl Scene {
                         timestamp_ms: self.clock_ms,
                     });
                     row += 1;
+                    self.repaint_state = make_state(idx + 1);
                     stall(&mut self.clock_ms, PACE_LINE_MS);
                 }
                 SceneStep::Probe {
@@ -372,11 +468,121 @@ impl Scene {
                         timestamp_ms: self.clock_ms,
                     });
                     row += 1;
+                    self.repaint_state = make_state(idx + 1);
                     stall(&mut self.clock_ms, PACE_LINE_MS);
                 }
             }
         }
         row
+    }
+
+    /// Replay a script prefix without pacing, ring-buffer pushes, or
+    /// `repaint_state` updates. Used by `Scene::repaint` to reconstruct
+    /// the visible state of the screen after a framebuffer-invalidating
+    /// mode switch.
+    ///
+    /// Mirrors the per-step rendering in `play_script` exactly so the
+    /// repainted output is pixel-identical to the original draw. The
+    /// `count` argument bounds how many steps from `script` are
+    /// replayed; rows are assigned as `start_row..start_row + count`.
+    #[allow(dead_code)] // Phase 2 wires the dispatcher that consumes this.
+    fn repaint_script_prefix(
+        renderer: &mut Renderer,
+        script: &[SceneStep<'static>],
+        start_row: usize,
+        count: usize,
+    ) {
+        let mut row = start_row;
+        let limit = count.min(script.len());
+        for step in &script[..limit] {
+            match step {
+                SceneStep::Telemetry { label, status } => {
+                    renderer.draw_telemetry_line(label, status, row);
+                }
+                SceneStep::Line(text) => {
+                    renderer.draw_line(text, row);
+                }
+                SceneStep::Probe {
+                    label_bitmap,
+                    label_width_px,
+                    status_bitmap,
+                    status_width_px,
+                } => {
+                    renderer.draw_probe_line(
+                        label_bitmap,
+                        *label_width_px,
+                        status_bitmap,
+                        *status_width_px,
+                        row,
+                    );
+                }
+            }
+            row += 1;
+        }
+    }
+
+    /// Repaint everything currently on screen at the renderer's
+    /// current dimensions.
+    ///
+    /// Phase 1's keystroke-dispatcher hook: after a runtime
+    /// `Renderer::set_mode`, the framebuffer is invalidated (UEFI 2.10
+    /// §12.9), and the dispatcher (Phase 2) calls this to reconstruct
+    /// what the operator was looking at. Read-only from the timeline's
+    /// perspective: no `LineRendered` events are pushed, no `clock_ms`
+    /// stalls, no recursion into `Scene::run` or the runner methods.
+    /// Safe to call from inside a runner's poll loop.
+    ///
+    /// The repaint reads `self.repaint_state` and replays just the
+    /// prefix of the boot scripts the snapshot describes. Cursor state
+    /// during awaiting / parked is left to the next blink tick.
+    #[allow(dead_code)] // Phase 2 wires the dispatcher that consumes this.
+    fn repaint(&mut self, renderer: &mut Renderer) {
+        // Honour the framebuffer-invalidation contract.
+        renderer.clear();
+        Self::draw_chrome(renderer);
+
+        match self.repaint_state {
+            RepaintState::Chrome | RepaintState::Awaiting => {
+                // Chrome is already drawn; awaiting's cursor is
+                // restored by the next blink tick.
+            }
+            RepaintState::BootingPre { played } => {
+                Self::repaint_script_prefix(renderer, BOOT_SCRIPT_PRE, 0, played);
+            }
+            RepaintState::BootingBootloader { pre_played } => {
+                // Carve-out fallback: the bootloader owns its own
+                // rows and no external state describes them. PRE only.
+                Self::repaint_script_prefix(renderer, BOOT_SCRIPT_PRE, 0, pre_played);
+            }
+            RepaintState::BootingPost {
+                pre_played,
+                bootloader_next_row,
+                post_played,
+            } => {
+                Self::repaint_script_prefix(renderer, BOOT_SCRIPT_PRE, 0, pre_played);
+                Self::repaint_script_prefix(
+                    renderer,
+                    BOOT_SCRIPT_POST,
+                    bootloader_next_row,
+                    post_played,
+                );
+            }
+            RepaintState::Parked {
+                pre_played,
+                bootloader_next_row,
+                post_played,
+                system_online_row,
+            } => {
+                Self::repaint_script_prefix(renderer, BOOT_SCRIPT_PRE, 0, pre_played);
+                Self::repaint_script_prefix(
+                    renderer,
+                    BOOT_SCRIPT_POST,
+                    bootloader_next_row,
+                    post_played,
+                );
+                renderer.draw_line(SYSTEM_ONLINE_TEXT, system_online_row);
+            }
+        }
     }
 
     // ----------------------------------------------------------------
@@ -391,12 +597,39 @@ impl Scene {
     /// The prompt lands one blank row below the final boot-sequence line.
     /// After returning, the caller issues ACPI shutdown.
     fn run_parked(&mut self, renderer: &mut Renderer, start_row: usize) {
-        const TEXT: &str = "SYSTEM ONLINE. AWAITING INSTRUCTIONS.";
         let text_row = start_row + 1; // leave one blank row after BOOT COMPLETE
-        let cursor_col: usize = TEXT.len() + 1;
+        let cursor_col: usize = SYSTEM_ONLINE_TEXT.len() + 1;
         let cursor_row: usize = text_row;
 
-        renderer.draw_line(TEXT, text_row);
+        renderer.draw_line(SYSTEM_ONLINE_TEXT, text_row);
+
+        // Capture the full repaint snapshot for the parked screen.
+        // The previous repaint_state — set at the end of `play_script`
+        // for POST — already carries the right `pre_played`,
+        // `bootloader_next_row`, and `post_played`; lift them and add
+        // the SYSTEM ONLINE row.
+        let (pre_played, bootloader_next_row, post_played) = match self.repaint_state {
+            RepaintState::BootingPost {
+                pre_played,
+                bootloader_next_row,
+                post_played,
+            } => (pre_played, bootloader_next_row, post_played),
+            // Defensive: if the previous state was not BootingPost
+            // (e.g. some future caller jumps straight here), fall
+            // back to the script lengths so the snapshot is at least
+            // self-consistent.
+            _ => (
+                BOOT_SCRIPT_PRE.len(),
+                start_row.saturating_sub(BOOT_SCRIPT_POST.len()),
+                BOOT_SCRIPT_POST.len(),
+            ),
+        };
+        self.repaint_state = RepaintState::Parked {
+            pre_played,
+            bootloader_next_row,
+            post_played,
+            system_online_row: text_row,
+        };
 
         // Reuse the existing cursor state to preserve blink/glitch
         // counter continuity from the AWAITING screen.

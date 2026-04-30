@@ -66,7 +66,7 @@ or absent, leave it as a silent assertion.
 | Operation | Mode | Metaphorical role | Status |
 |-----------|------|-------------------|--------|
 | Mode set: 640x480, 800x600, 1024x768, etc. | set | Tuning the lens / adjusting perception | binary: [phase 4](plans/PLAN-first-playable-phase-04-renderer.md) |
-| Mode walk across all offered modes | both | The instrument testing what it can perceive | — |
+| Mode walk across all offered modes | both | The instrument testing what it can perceive | binary: [display-mode-keystrokes](plans/PLAN-display-mode-keystrokes.md) |
 | Bit-depth changes (8 / 16 / 32) | set | Colour vision dimming and brightening | — |
 | Image compression negotiated (LZ / GLZ / quic) | set | How frankly the instrument transmits what it sees | — |
 | MJPEG / H.264 video stream open | set | Sustained moving imagery — something is in motion | — |

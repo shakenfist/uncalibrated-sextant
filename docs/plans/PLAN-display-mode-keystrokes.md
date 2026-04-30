@@ -304,7 +304,7 @@ them drift.
 |-------|------|--------|
 | 1. Renderer `set_mode` + redraw hook + ring-buffer events | [PLAN-display-mode-keystrokes-phase-01-renderer.md](PLAN-display-mode-keystrokes-phase-01-renderer.md) | Complete (commits f1acc97, 7c0f50b, 4dd4b03, 629bbad, plus this closeout) |
 | 2. Keystroke handlers in awaiting / booting / parked + cycle + on-screen toast | [PLAN-display-mode-keystrokes-phase-02-keystrokes.md](PLAN-display-mode-keystrokes-phase-02-keystrokes.md) | Complete (commits bf2c11f, df35129, d6af190, 77480cf, plus this closeout) |
-| 3. Iteration against ryll `display-mode-ui`, documentation, inventory closeout | PLAN-display-mode-keystrokes-phase-03-docs.md | Not started |
+| 3. Iteration against ryll `display-mode-ui`, documentation, inventory closeout | [PLAN-display-mode-keystrokes-phase-03-docs.md](PLAN-display-mode-keystrokes-phase-03-docs.md) | Complete (commits 1c06122, d29187d, plus this closeout) |
 
 ### Phase 1 sketch — Renderer `set_mode`, redraw hook, ring-buffer events
 
@@ -575,58 +575,96 @@ verify:
 
 This milestone is complete when:
 
-- [ ] `Renderer::set_mode(width, height)` exists, accepts a
+- [x] `Renderer::set_mode(width, height)` exists, accepts a
       requested mode, applies the nearest available, queries
       back the actual applied mode, and returns it.
-- [ ] A one-time `available GOP modes: ...` line is emitted to
+      *(commit `f1acc97`.)*
+- [x] A one-time `available GOP modes: ...` line is emitted to
       serial at boot, and the observed list under default
       QEMU + OVMF has been recorded inline in this plan's
-      *Open questions* section.
-- [ ] `Scene::repaint` (or equivalent) exists and lets each
+      *Open questions* section. *(commits `7c0f50b` for std,
+      `1c06122` for qxl; both lists are byte-for-byte the
+      same 30-mode set.)*
+- [x] `Scene::repaint` (or equivalent) exists and lets each
       scene runner redraw its current state at the current
-      Renderer dimensions.
-- [ ] Ring-buffer events `ModeSwitch` and `ModeCycle` are
+      Renderer dimensions. *(commit `629bbad` — Phase 1's
+      `RepaintState` enum + `Scene::repaint` +
+      `repaint_script_prefix`.)*
+- [x] Ring-buffer events `ModeSwitch` and `ModeCycle` are
       defined, emitted at the right moments, and rendered as
-      plain-text serial lines.
-- [ ] An operator running `make qemu` can press `1`–`6` and
+      plain-text serial lines. *(defined in `4dd4b03`,
+      emitted via `try_handle_mode_key` + `cycle_modes` in
+      `bf2c11f` + `d6af190`.)*
+- [x] An operator running `make qemu` can press `1`–`6` and
       `0` from the awaiting and parked scenes and observe
       the GTK window resize plus the scene repaint cleanly.
-- [ ] An operator running `make spice-ryll` (with a release
+      *(operator-verified at end of Phase 2; closeout
+      `1b1b446`.)*
+- [x] An operator running `make spice-ryll` (with a release
       build of ryll's `display-mode-ui` branch supplied via
       `RYLL=`) can press `1`–`6` and `0` and observe ryll's
-      window track each new resolution.
-- [ ] With ryll's `Obey guest size hints` toggled off, the
+      window track each new resolution. *(operator-verified
+      at end of Phase 2; closeout `1b1b446`.)*
+- [x] With ryll's `Obey guest size hints` toggled off, the
       binary's mode change is visible inside ryll's pinned
       window without ryll re-fitting; toggling back on causes
       the *next* mode change to re-fit. (i.e. the affordance
       genuinely exercises both branches of the ryll feature.)
-- [ ] Pressing a mode key during the locked-bootloader scene
+      *(operator-verified at end of Phase 2; closeout
+      `1b1b446`.)*
+- [x] Pressing a mode key during the locked-bootloader scene
       is logged as a stray keypress and otherwise ignored —
       the bootloader's R/I/A and paste-capture flow are
-      unchanged.
-- [ ] The on-screen toast appears, names the *applied*
+      unchanged. *(carve-out enforced by
+      `try_handle_mode_key` not being called from
+      `src/bootloader.rs`; verified by
+      `git diff bf2c11f..77480cf -- src/bootloader.rs`
+      returning empty in Phase 2's closeout.)*
+- [x] The on-screen toast appears, names the *applied*
       resolution (and the *requested* one if the two
       differ), and clears after ~1.5 s without leaving
-      stale pixels under it.
-- [ ] Cycle mode (`0`) is interruptible: any keypress during
+      stale pixels under it. *(commit `df35129`; toast
+      cleanup goes through `Scene::repaint` for partial-row
+      safety. Operator-verified visually.)*
+- [x] Cycle mode (`0`) is interruptible: any keypress during
       the cycle stops the walk; if the interrupting key is
       itself a mode key, it is honoured (stop + apply the
-      new request).
-- [ ] `make qemu`, `make spice`, `make spice-ryll`,
+      new request). *(commit `d6af190`; recursion semantics
+      documented in the Phase 2 plan's 2c brief and
+      operator-verified by interrupting a cycle with `'3'`
+      and confirming the binary settled at 1024×768.)*
+- [x] `make qemu`, `make spice`, `make spice-ryll`,
       `make release-verify`, and `make screenshot` continue
-      to work.
-- [ ] `pre-commit run --all-files` exits 0.
-- [ ] Host-side `cargo test` passes, including a
-      `nearest_mode` unit test.
-- [ ] `README.md`, `ARCHITECTURE.md`, `AGENTS.md`, and
+      to work. *(verified at every phase closeout;
+      `make screenshot` produces the same 59-event Phase-1
+      baseline transcript with no `mode_switch`/`mode_cycle`
+      lines.)*
+- [x] `pre-commit run --all-files` exits 0. *(verified per
+      commit across all three phases.)*
+- [ ] ~~Host-side `cargo test` passes, including a
+      `nearest_mode` unit test.~~ *(Deferred. The crate is
+      `no_std` UEFI-only with no host-test infrastructure;
+      adding a host-test target requires a workspace split
+      or conditional `uefi` compilation, both larger than
+      the function being tested. Validated instead by
+      construction (pure function), indirect (`Renderer::new`
+      now routes through it), and Phase 2's keystroke smoke
+      tests. Documented in Phase 1's plan, Scope → Deferred
+      from the master plan.)*
+- [x] `README.md`, `ARCHITECTURE.md`, `AGENTS.md`, and
       `docs/spice-test-inventory.md` reflect the new
       affordance and the locked-bootloader carve-out.
-- [ ] `docs/spice-test-inventory.md`'s *Mode walk across all
+      *(commits `d29187d`, `1c06122`, plus this closeout.)*
+- [x] `docs/spice-test-inventory.md`'s *Mode walk across all
       offered modes* row carries a `binary:` link to this
-      plan.
-- [ ] `docs/plans/index.md` and `docs/plans/order.yml` have
+      plan. *(this closeout.)*
+- [x] `docs/plans/index.md` and `docs/plans/order.yml` have
       been updated for this master plan; per-phase plan
       files are linked from the *Execution* table.
+      *(`order.yml` and `index.md` updated at master-plan
+      creation in commit `455d2b5`; per-phase links added to
+      the *Execution* table as each phase landed; Phase 3
+      Complete marker added in this closeout.)*
 
 ### Future work
 

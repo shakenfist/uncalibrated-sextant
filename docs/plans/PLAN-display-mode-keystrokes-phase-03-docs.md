@@ -8,12 +8,56 @@ Previous phases:
 
 ## Outcome
 
-**Status: Not started.**
+**Status: Complete (commits 1c06122, d29187d, plus this
+closeout).**
 
-This section will be populated as Phase 3 lands, in the same
-shape as the earlier phases: a one-paragraph headline, the
-list of what shipped, and the list of what was *not* shipped
-and why.
+The display-mode-keystrokes milestone is closed. Phase 3
+captured the qxl mode list (Phase 1 deferral) and confirmed
+it is byte-for-byte identical to the std list, fanned out the
+documentation across `README.md`, `ARCHITECTURE.md`, and
+`AGENTS.md` with consistent locked-bootloader carve-out
+language, marked the *Mode walk* row in the SPICE test
+inventory with a `binary:` link, and ticked the master plan's
+*Success criteria* checklist with one struck-through deferred
+item (the host-side `cargo test` for `nearest_mode`).
+
+### What Phase 3 actually delivered
+
+- Headless qxl mode-list capture under the same OVMF + q35
+  args as `scripts/spice.sh`, recorded in the master plan's
+  *Open questions* alongside the std list. Both lists are the
+  same 30 modes; only enumeration order differs. All six
+  binding keys present in both. (commit `1c06122`)
+- `README.md` gained a new `### Display-mode keystrokes`
+  subsection with the binding table, toast format, bootloader
+  carve-out, and `make spice-ryll` acceptance-test recipe.
+  `## Status` updated to name the milestone landed.
+  `ARCHITECTURE.md` gained a paragraph on runtime mode
+  switching naming `Renderer::set_mode`, `Scene::repaint`,
+  `RepaintState`, and the carve-out. `AGENTS.md` had its
+  `## Current phase` heading renamed to `## Most recently
+  landed` and its body refreshed with a prominent
+  LOAD-BEARING CARVE-OUT paragraph. (commit `d29187d`)
+- `docs/spice-test-inventory.md`'s *Mode walk across all
+  offered modes* row's status is now
+  `binary: [display-mode-keystrokes](plans/PLAN-display-mode-keystrokes.md)`.
+  (this closeout)
+- Master plan's *Execution* table marks Phase 3 Complete;
+  *Success criteria* checklist ticked with per-item commit
+  references; the host-side `cargo test` line is struck
+  through pointing at Phase 1's deferral rationale.
+  `docs/plans/index.md` *Master plans* row updated to
+  *Complete*. (this closeout)
+
+### What Phase 3 did NOT deliver, and why
+
+- **`DESIGN.md` updates.** Intentionally excluded: the SPICE
+  channel mapping table there is high-level and does not
+  carry per-row binary-implementation status — that lives in
+  the inventory. The phase plan flagged this so a future
+  reviewer doesn't chase the gap.
+- **Code changes.** None expected; none made. `git diff
+  1c06122..HEAD -- src/` is empty for this phase.
 
 ## Prompt
 
@@ -348,40 +392,50 @@ Update the *Master plans* row for display-mode keystrokes:
 
 ## Exit criteria
 
-- [ ] qxl mode list captured under `make spice-ryll` and
+- [x] qxl mode list captured under headless QEMU
+      (equivalent to `make spice-ryll`'s qxl device) and
       pasted into the master plan's *Open questions*
-      alongside the std list. Any binding-key
-      substitutions documented.
-- [ ] `README.md` documents the keystroke affordance, the
+      alongside the std list. No binding-key substitutions
+      under either device. *(commit `1c06122`.)*
+- [x] `README.md` documents the keystroke affordance, the
       bootloader carve-out, and the `make spice-ryll`
-      acceptance path.
-- [ ] `ARCHITECTURE.md` carries a paragraph on runtime
+      acceptance path. *(commit `d29187d`.)*
+- [x] `ARCHITECTURE.md` carries a paragraph on runtime
       mode switching naming `Renderer::set_mode`,
-      `Scene::repaint`, and `RepaintState`.
-- [ ] `AGENTS.md` *Current phase* section updated to
+      `Scene::repaint`, and `RepaintState`. *(commit
+      `d29187d`.)*
+- [x] `AGENTS.md` *Current phase* section updated to
       describe display-mode keystrokes as the most
       recently completed milestone, with the carve-out
-      called out for sub-agents.
-- [ ] `docs/spice-test-inventory.md` *Mode walk across all
+      called out for sub-agents. (Heading renamed to
+      `## Most recently landed` per the phase plan's
+      flagged judgement call.) *(commit `d29187d`.)*
+- [x] `docs/spice-test-inventory.md` *Mode walk across all
       offered modes* row's status carries a `binary:` link
-      to the master plan.
-- [ ] Master plan's *Execution* table marks Phase 3
-      Complete with the commit range.
-- [ ] Master plan's *Success criteria* checklist ticked
+      to the master plan. *(this closeout.)*
+- [x] Master plan's *Execution* table marks Phase 3
+      Complete with the commit range. *(this closeout.)*
+- [x] Master plan's *Success criteria* checklist ticked
       with per-item verification notes; `cargo test` line
       struck through with the Phase-1 deferral rationale.
-- [ ] `docs/plans/index.md` *Master plans* row updated to
+      *(this closeout.)*
+- [x] `docs/plans/index.md` *Master plans* row updated to
       *Complete* with the full commit range from
-      `46aae05` (master plan) through Phase 3's closeout.
-- [ ] `pre-commit run --all-files` exits 0 at every commit
-      across the phase.
-- [ ] No code changes in this phase. `git diff
-      master..HEAD -- src/` returns empty for Phase 3's
-      commits.
-- [ ] `make screenshot`, `make qemu`, `make spice-ryll`,
+      `455d2b5` (master plan) through this closeout.
+      *(this closeout.)*
+- [x] `pre-commit run --all-files` exits 0 at every commit
+      across the phase. *(verified per commit at 3a, 3b,
+      and after the closeout.)*
+- [x] No code changes in this phase. `git diff
+      f1aeac6..HEAD -- src/` returns empty for Phase 3's
+      commits. *(verified.)*
+- [x] `make screenshot`, `make qemu`, `make spice-ryll`,
       and `make release-verify` all continue to work
-      identically to Phase 2's baseline.
-- [ ] Commit messages follow the project's template.
+      identically to Phase 2's baseline. *(no behavioural
+      changes since Phase 2's `1b1b446`.)*
+- [x] Commit messages follow the project's template.
+      *(verified by inspection of `1c06122` and `d29187d`;
+      this closeout follows the same shape.)*
 
 ## Risks and open questions
 

@@ -358,6 +358,7 @@ impl Scene {
             // Advance cursor state by one poll interval.
             let glyph = self.cursor.tick(POLL_MS);
             Self::draw_or_clear_cursor(renderer, glyph, CURSOR_COL, CURSOR_ROW);
+            self.tick_toast(renderer, POLL_MS);
             stall(&mut self.clock_ms, POLL_MS);
 
             if let Some((ch, sc)) = poll_key() {
@@ -366,6 +367,13 @@ impl Scene {
                     scancode: sc,
                     timestamp_ms: self.clock_ms,
                 });
+
+                if self.try_handle_mode_key(renderer, ch) {
+                    // Mode key consumed — stay in awaiting.
+                    continue;
+                }
+
+                // Non-mode key — transition to booting.
                 self.ring.push(Event::SceneTransition {
                     from: Phase::Awaiting,
                     to: Phase::Booting,
@@ -471,7 +479,7 @@ impl Scene {
                     });
                     row += 1;
                     self.repaint_state = make_state(idx + 1);
-                    stall(&mut self.clock_ms, PACE_LINE_MS);
+                    self.stall_with_keys(renderer, PACE_LINE_MS);
                 }
                 SceneStep::Line(text) => {
                     renderer.draw_line(text, row);
@@ -481,7 +489,7 @@ impl Scene {
                     });
                     row += 1;
                     self.repaint_state = make_state(idx + 1);
-                    stall(&mut self.clock_ms, PACE_LINE_MS);
+                    self.stall_with_keys(renderer, PACE_LINE_MS);
                 }
                 SceneStep::Probe {
                     label_bitmap,
@@ -502,7 +510,7 @@ impl Scene {
                     });
                     row += 1;
                     self.repaint_state = make_state(idx + 1);
-                    stall(&mut self.clock_ms, PACE_LINE_MS);
+                    self.stall_with_keys(renderer, PACE_LINE_MS);
                 }
             }
         }
@@ -643,7 +651,6 @@ impl Scene {
     /// Tick the toast TTL by `dt_ms`. If the TTL elapses, clear
     /// the toast by repainting the entire scene (cheap, and the
     /// canonical way to undo any partial-row state).
-    #[allow(dead_code)] // Wired into runner blink loops in step 2d.
     fn tick_toast(&mut self, renderer: &mut Renderer, dt_ms: u64) {
         if let Some(state) = self.toast.as_mut() {
             if state.remaining_ms <= dt_ms {
@@ -718,6 +725,37 @@ impl Scene {
         }
     }
 
+    /// Stall for `total_ms` while polling for keystrokes. Mode
+    /// keys are dispatched via `try_handle_mode_key`; non-mode
+    /// keys are discarded (a small behaviour change from the
+    /// pre-Phase-2 binary, where non-mode keys would sit in the
+    /// firmware queue and be drained by `run_parked`'s blink
+    /// loop). Toast TTL is ticked each chunk.
+    ///
+    /// The total stall budget is fixed: dispatching a mode key
+    /// mid-stall does not reset the budget. Wall-clock time
+    /// spent in `try_handle_mode_key` is *not* deducted from
+    /// the budget either — the stall accounts only for `stall`
+    /// calls within its own loop.
+    fn stall_with_keys(&mut self, renderer: &mut Renderer, total_ms: u64) {
+        let mut elapsed: u64 = 0;
+        while elapsed < total_ms {
+            let chunk = POLL_MS.min(total_ms - elapsed);
+            if let Some((ch, sc)) = poll_key() {
+                self.ring.push(Event::Keypress {
+                    unicode: ch,
+                    scancode: sc,
+                    timestamp_ms: self.clock_ms,
+                });
+                // Returns false for non-mode keys — discard.
+                let _ = self.try_handle_mode_key(renderer, ch);
+            }
+            self.tick_toast(renderer, chunk);
+            stall(&mut self.clock_ms, chunk);
+            elapsed += chunk;
+        }
+    }
+
     /// Try to handle a keystroke as a mode-switch request.
     /// Returns `true` if the keystroke was a mode key and was
     /// consumed; `false` if the caller should handle it as
@@ -735,7 +773,6 @@ impl Scene {
     /// Key '0' delegates to `cycle_modes`, which walks every
     /// available GOP mode with a `CYCLE_DWELL_MS` dwell per
     /// step and is interruptible by any keypress.
-    #[allow(dead_code)] // Wired into runner sites in step 2d.
     pub(crate) fn try_handle_mode_key(&mut self, renderer: &mut Renderer, ch: char) -> bool {
         if ch == '0' {
             self.cycle_modes(renderer);
@@ -812,6 +849,7 @@ impl Scene {
         loop {
             let glyph = self.cursor.tick(POLL_MS);
             Self::draw_or_clear_cursor(renderer, glyph, cursor_col, cursor_row);
+            self.tick_toast(renderer, POLL_MS);
             stall(&mut self.clock_ms, POLL_MS);
 
             if let Some((ch, sc)) = poll_key() {
@@ -820,7 +858,14 @@ impl Scene {
                     scancode: sc,
                     timestamp_ms: self.clock_ms,
                 });
-                // Parked → Parked transition signals the final keypress.
+
+                if self.try_handle_mode_key(renderer, ch) {
+                    // Mode key consumed — stay in parked.
+                    continue;
+                }
+
+                // Non-mode key — Parked → Parked transition signals
+                // the final keypress that exits the parking loop.
                 self.ring.push(Event::SceneTransition {
                     from: Phase::Parked,
                     to: Phase::Parked,

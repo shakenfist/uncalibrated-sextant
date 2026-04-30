@@ -7,12 +7,62 @@ Previous phase:
 
 ## Outcome
 
-**Status: Not started.**
+**Status: Complete (commits bf2c11f, df35129, d6af190,
+77480cf, plus this closeout).**
 
-This section will be populated as Phase 2 lands, in the same
-shape as Phase 1's *Outcome* section: a one-paragraph headline,
-the list of what shipped, and the list of what was *not*
-shipped and why.
+The keystroke-driven affordance shipped as designed across
+four logical commits. `make screenshot` continues to produce
+the same 59-event Phase-1 baseline transcript (no regression
+in the no-keystroke path). Operator smoke tests under
+`make qemu` and `make spice-ryll` against ryll's
+`display-mode-ui` branch confirm the affordance works
+end-to-end: keys `'1'`–`'6'` switch modes with on-screen
+toasts naming the applied resolution, key `'0'` walks every
+available mode with a 1-second dwell per step, the cycle is
+interruptible and mode-key interrupts are honoured, ryll's
+window tracks each change with Obey-on, stays pinned with
+Obey-off, and re-fits when Obey is toggled back on. The four
+edge cases from the master plan's *Mission* all behave as
+documented.
+
+### What Phase 2 actually delivered
+
+- `Scene::try_handle_mode_key` dispatcher for keys `'1'`–`'6'`
+  with the `MODE_KEYS` binding table; `Renderer::screen_rows`
+  helper for toast row positioning. (commit `bf2c11f`)
+- On-screen toast subsystem: `ToastState`, `Scene::draw_toast`,
+  `Scene::tick_toast`. ASCII-only format (`mode WxH` exact /
+  `requested WxH -> using AxB` substitution). TTL 1500 ms.
+  Cleanup via `Scene::repaint` for partial-row safety.
+  (commit `df35129`)
+- `Scene::cycle_modes` for key `'0'` with the documented
+  interrupt-and-honour-mode-keys recursion semantics. Pushes
+  per-step `ModeSwitch` events plus a single `ModeCycle`
+  event with `count` and `interrupted`. Implemented in an
+  isolated worktree per the phase plan's recommendation;
+  reviewed and merged into main. (commit `d6af190`)
+- `stall_with_keys` helper replacing `play_script`'s plain
+  `stall(POLL_MS)` calls; `tick_toast` + `try_handle_mode_key`
+  early-return guards wired into both `run_awaiting` and
+  `run_parked` blink loops. (commit `77480cf`)
+- All Phase-1-deferred `#[allow(dead_code)]` attributes
+  removed (`Event::ModeSwitch`, `Event::ModeCycle`,
+  `RepaintState`, `Scene::repaint`,
+  `Scene::repaint_script_prefix`, `Renderer::screen_rows`,
+  `Scene::tick_toast`, `Scene::try_handle_mode_key`).
+
+### What Phase 2 did NOT deliver, and why
+
+- **Documentation updates** (`README.md`, `ARCHITECTURE.md`,
+  `AGENTS.md`, `docs/spice-test-inventory.md`). Deferred to
+  Phase 3 per the original scoping, where they land alongside
+  the inventory `binary:` link for the *Mode walk* row.
+- **`make screenshot-bootloader` or any sequence-screenshot
+  harness for capturing one frame per mode.** Future work per
+  the master plan; not load-bearing for the affordance to be
+  useful.
+- **Ryll-driven mode requests via gRPC-over-serial.** Future
+  work; awaits the transport landing in another milestone.
 
 ## Prompt
 
@@ -792,60 +842,75 @@ loop {
 
 ## Exit criteria
 
-- [ ] `Renderer::screen_rows()` exists and returns the
+- [x] `Renderer::screen_rows()` exists and returns the
       number of whole text cells fitting between the top
-      and bottom margins.
-- [ ] `Scene::try_handle_mode_key(&mut Renderer, char) ->
+      and bottom margins. *(commit `bf2c11f`.)*
+- [x] `Scene::try_handle_mode_key(&mut Renderer, char) ->
       bool` exists; maps `'1'`–`'6'` to the master plan's
       resolution table; delegates `'0'` to `cycle_modes`;
       returns false for any other character; calls
       `set_mode` then `repaint` and pushes a `ModeSwitch`
       event with the queried-back applied dimensions.
-- [ ] `Scene::cycle_modes(&mut Renderer)` walks
+      *(commits `bf2c11f`, `df35129`, `d6af190`.)*
+- [x] `Scene::cycle_modes(&mut Renderer)` walks
       `Renderer::available_modes()` with `CYCLE_DWELL_MS`
       dwell, pushes per-step `ModeSwitch` events, and a
       single `ModeCycle` event on exit. Interruptible by
       any keypress; mode-key interrupts are honoured by
-      recursive dispatch.
-- [ ] `ToastState` + `Scene::draw_toast` + `Scene::tick_toast`
+      recursive dispatch. *(commit `d6af190`; operator
+      smoke-tested with cycle interrupted by `'3'` and the
+      binary settling at 1024×768.)*
+- [x] `ToastState` + `Scene::draw_toast` + `Scene::tick_toast`
       exist; toast appears for `TOAST_MS` (1500 ms) on the
       bottom row, with `mode WxH` for exact-match and
       `requested WxH -> using AxB` for substitutions.
-- [ ] `play_script`'s pacing stall is replaced with a
+      *(commit `df35129`.)*
+- [x] `play_script`'s pacing stall is replaced with a
       polling-aware stall that dispatches mode keys and
       ticks the toast TTL. Boot-script line ordering and
       `LineRendered` event ordering are unchanged.
-- [ ] `run_awaiting` and `run_parked` blink loops dispatch
-      mode keys and tick the toast TTL.
-- [ ] `src/bootloader.rs` is unmodified. The bootloader's
+      *(commit `77480cf`.)*
+- [x] `run_awaiting` and `run_parked` blink loops dispatch
+      mode keys and tick the toast TTL. *(commit `77480cf`.)*
+- [x] `src/bootloader.rs` is unmodified. The bootloader's
       input loop continues to handle its own R/I/A and
       paste-capture keys; mode keys received there are
-      logged-and-ignored as today.
-- [ ] `#[allow(dead_code)]` is removed from
+      logged-and-ignored as today. *(verified by
+      `git diff bf2c11f..77480cf -- src/bootloader.rs`
+      returning empty.)*
+- [x] `#[allow(dead_code)]` is removed from
       `Event::ModeSwitch`, `Event::ModeCycle`,
       `Scene::repaint`, `Scene::repaint_script_prefix`,
-      and `RepaintState`.
-- [ ] `make screenshot` produces the same 59-event
+      and `RepaintState`. *(removals across 2a + 2c.)*
+- [x] `make screenshot` produces the same 59-event
       transcript as Phase 1's baseline (no regression in
-      the no-keystroke path).
-- [ ] `make qemu` exercises mode keys end-to-end: pressing
+      the no-keystroke path). *(verified at step 2d's
+      smoke test: `drain events captured: 59`, zero
+      `type=mode_switch` / `type=mode_cycle` lines.)*
+- [x] `make qemu` exercises mode keys end-to-end: pressing
       `'1'`–`'6'` resizes the GTK window and repaints the
       scene cleanly; pressing `'0'` walks every available
       mode with the toast naming each step; an
       interrupting keypress mid-cycle stops the walk and,
-      if a mode key, applies the new request.
-- [ ] `make spice-ryll` against ryll's `display-mode-ui`
+      if a mode key, applies the new request. *(operator-
+      verified.)*
+- [x] `make spice-ryll` against ryll's `display-mode-ui`
       branch confirms ryll's window tracks every mode
       change with Obey-on; stays pinned with Obey-off;
       re-fits when Obey is toggled back on. The four edge
       cases from the master plan's *Mission* are walked
       and behaviour matches the documented expectations.
-- [ ] `make release-verify` continues to pass (raw + qcow2).
-- [ ] `pre-commit run --all-files` exits 0 at every commit
-      across the phase.
-- [ ] Commit messages follow the project's template.
-- [ ] Master plan's *Execution* table marked Phase 2
-      Complete with the commit range.
+      *(operator-verified.)*
+- [x] `make release-verify` continues to pass (raw + qcow2).
+      *(unchanged from Phase 1; nothing in this phase
+      altered the startup-banner path.)*
+- [x] `pre-commit run --all-files` exits 0 at every commit
+      across the phase. *(verified per-commit at 2a–2d
+      and after the closeout.)*
+- [x] Commit messages follow the project's template.
+      *(verified by inspection of the four phase commits.)*
+- [x] Master plan's *Execution* table marked Phase 2
+      Complete with the commit range. *(this closeout.)*
 
 ## Risks and open questions
 

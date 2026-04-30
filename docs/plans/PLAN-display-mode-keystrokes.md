@@ -177,17 +177,28 @@ the relevant phase. Capture changes inline rather than letting
 them drift.
 
 - **Which GOP modes does OVMF actually expose under QEMU?**
-  **Default to be confirmed in Phase 1.** The implementing
-  session should log the full output of `gop.modes()` once at
-  boot to serial (under a debug feature or unconditionally as a
-  one-time line) and record the observed list inline in this
-  section before Phase 2 begins. Strong prior: 640×480,
-  800×600, 1024×768, plus whatever QEMU's stdvga / qxl ROM
-  advertises (commonly 1280×1024, sometimes 1920×1080). If a
-  table key has no corresponding mode under our default
-  hardware, that key falls back per the *unavailable mode*
-  rule above; we do not silently drop it from the documented
-  reference.
+  Observed under default `make qemu` / `make screenshot`
+  (OVMF + qemu-system-x86_64, `-vga std` default, no explicit
+  `-vga` flag), commit `f1acc97`:
+
+  ```
+  available GOP modes: 1280x800 640x480 800x480 800x600 832x624
+  960x640 1024x600 1024x768 1152x864 1152x870 1280x720 1280x760
+  1280x768 1280x960 1280x1024 1360x768 1366x768 1400x1050
+  1440x900 1600x900 1600x1200 1680x1050 1920x1080 1920x1200
+  1920x1440 2000x2000 2048x1536 2048x2048 2560x1440 2560x1600
+  ```
+
+  All six key-binding targets (640×480, 800×600, 1024×768,
+  1280×720, 1280×1024, 1920×1080) are present in the list; no
+  fallback substitutions are needed for the planned bindings
+  under `-vga std`.
+
+  Note: `scripts/spice.sh` and `scripts/spice-ryll.sh` both use
+  `-vga qxl`. The qxl mode list has not yet been captured;
+  recording it is deferred to Phase 2's acceptance-test step.
+  If `-vga qxl` exposes a different list, Phase 2's key-binding
+  table should be verified against it.
 
 - **Should `0` (cycle) be interruptible?** **Default: yes.**
   Pressing any other key during the cycle stops the walk and

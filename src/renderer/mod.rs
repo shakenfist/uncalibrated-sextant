@@ -157,10 +157,6 @@ impl Renderer {
     /// `gop.modes()` takes `&mut GraphicsOutput` internally, which
     /// makes a shared-borrow return shape impractical; the owned vec
     /// avoids that problem entirely.
-    ///
-    /// The call site in `main.rs` is added in step 1b; the attribute
-    /// below suppresses the dead-code lint in the meantime.
-    #[allow(dead_code)]
     pub fn available_modes(&mut self) -> Vec<(usize, usize)> {
         self.gop.modes().map(|m| m.info().resolution()).collect()
     }

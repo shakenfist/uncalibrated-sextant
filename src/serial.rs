@@ -41,6 +41,26 @@ pub fn write_startup_banner() {
     });
 }
 
+/// Emit a one-line dump of every GOP mode the firmware exposes.
+///
+/// Written once at boot, immediately after the renderer is initialised,
+/// so the full list is visible in `dist/serial.log` without requiring
+/// interactive keystrokes. Format:
+///
+///   available GOP modes: 640x480 800x600 1024x768 ...
+pub fn write_available_modes<I>(modes: I)
+where
+    I: IntoIterator<Item = (usize, usize)>,
+{
+    with_serial(|serial| {
+        let _ = write!(serial, "available GOP modes:");
+        for (w, h) in modes {
+            let _ = write!(serial, " {w}x{h}");
+        }
+        let _ = writeln!(serial, "\r");
+    });
+}
+
 /// One-shot plain-text dump of the event ring buffer.
 ///
 /// Called immediately before ACPI shutdown. Format: one line per event,

@@ -28,6 +28,7 @@ fn main() -> Status {
     serial::write_startup_banner();
 
     let mut r = Renderer::new().expect("renderer init failed");
+    serial::write_available_modes(r.available_modes());
     let mut scene = Scene::new();
     scene.run(&mut r)
     // scene.run is `-> !` (ends with ACPI shutdown), so this is

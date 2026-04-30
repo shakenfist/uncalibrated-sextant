@@ -8,10 +8,44 @@
 // to the firmware via a separate BltOp::BufferToVideo call. No monolithic
 // framebuffer memcpy.
 
+extern crate alloc;
+
 mod font;
 
+use alloc::vec::Vec;
 use uefi::boot::ScopedProtocol;
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
+
+/// Pick the available mode whose resolution is nearest to `req`,
+/// scored as `|dw| + |dh|`. Ties are broken by preferring the
+/// smaller width; if widths are equal, the smaller height wins.
+/// Both tie-break rules are applied in that order, deterministically.
+///
+/// Returns the index into `available` of the chosen mode.
+/// Returns `None` only when `available` is empty (which would be a
+/// firmware bug — GOP guarantees at least one mode).
+fn nearest_mode(req: (usize, usize), available: &[(usize, usize)]) -> Option<usize> {
+    if available.is_empty() {
+        return None;
+    }
+    let (rw, rh) = req;
+    let score = |(w, h): (usize, usize)| -> usize { rw.abs_diff(w) + rh.abs_diff(h) };
+    let mut best_idx = 0;
+    let mut best_score = score(available[0]);
+    for (i, &candidate) in available.iter().enumerate().skip(1) {
+        let s = score(candidate);
+        let better = s < best_score
+            || (s == best_score && candidate.0 < available[best_idx].0)
+            || (s == best_score
+                && candidate.0 == available[best_idx].0
+                && candidate.1 < available[best_idx].1);
+        if better {
+            best_idx = i;
+            best_score = s;
+        }
+    }
+    Some(best_idx)
+}
 
 /// Target column for the dot-leader / status field separator.
 pub const DOT_LEADER_COL: usize = 40;
@@ -49,26 +83,86 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    /// Acquire GOP, attempt to switch to 1024x768, clear the screen.
+    /// Acquire GOP, switch to the mode nearest to 1024x768 (via
+    /// `set_mode`), and clear the screen.
     ///
-    /// Falls back to the current mode if 1024x768 is not available or
-    /// if mode-switching fails.
+    /// Previously this method searched for an exact 1024x768 match and
+    /// kept whatever GOP came up in if the mode was absent. Now it
+    /// delegates to `set_mode(1024, 768)`, which routes through
+    /// `nearest_mode` and switches to the closest available resolution.
+    /// On real OVMF, 1024x768 is always present so behaviour is
+    /// observably identical; on firmware that omits it the new code
+    /// switches to the nearest alternative instead of doing nothing.
     pub fn new() -> uefi::Result<Self> {
         let handle = uefi::boot::get_handle_for_protocol::<GraphicsOutput>()?;
-        let mut gop = uefi::boot::open_protocol_exclusive::<GraphicsOutput>(handle)?;
+        let gop = uefi::boot::open_protocol_exclusive::<GraphicsOutput>(handle)?;
 
-        // Try to switch to 1024x768; ignore errors and use current mode.
-        let target = gop.modes().find(|m| m.info().resolution() == (1024, 768));
-        if let Some(mode) = target {
-            let _ = gop.set_mode(&mode);
-        }
-
+        // Construct with a placeholder resolution; set_mode will update
+        // width and height by querying back from GOP after the switch.
         let info = gop.current_mode_info();
         let (width, height) = info.resolution();
-
         let mut renderer = Self { gop, width, height };
+
+        renderer.set_mode(1024, 768);
         renderer.clear();
         Ok(renderer)
+    }
+
+    /// Switch GOP to the mode nearest to the requested `(req_w, req_h)`,
+    /// re-query GOP for the actually-applied resolution, update the
+    /// cached `width` and `height`, and return the applied dimensions.
+    ///
+    /// The applied resolution may differ from the request when the
+    /// requested mode is not exposed by the firmware; the caller is
+    /// responsible for surfacing that difference.
+    ///
+    /// Per UEFI 2.10 §12.9, `set_mode` invalidates the framebuffer.
+    /// The caller must redraw before this method returns control to a
+    /// scene that expects pixels intact.
+    ///
+    /// Errors from `gop.set_mode` are ignored (`let _ =`) — continuing
+    /// at whatever mode the firmware ended up in is better than panicking
+    /// on a firmware refusal. The post-switch query ensures `width` and
+    /// `height` always reflect reality.
+    pub fn set_mode(&mut self, req_w: usize, req_h: usize) -> (usize, usize) {
+        // Collect all available (width, height) pairs.
+        let resolutions: Vec<(usize, usize)> =
+            self.gop.modes().map(|m| m.info().resolution()).collect();
+
+        if let Some(idx) = nearest_mode((req_w, req_h), &resolutions) {
+            // Re-walk modes() to get the Mode value at the chosen index.
+            // modes() is an iterator so we cannot index it cheaply; zip
+            // with the resolution slice to find the matching Mode.
+            let chosen_mode = self.gop.modes().nth(idx);
+            if let Some(mode) = chosen_mode {
+                let _ = self.gop.set_mode(&mode);
+            }
+        }
+
+        // Always query back — never trust (req_w, req_h) as the truth.
+        let (w, h) = self.gop.current_mode_info().resolution();
+        self.width = w;
+        self.height = h;
+        (w, h)
+    }
+
+    /// All `(width, height)` modes the current GOP exposes, in the
+    /// order GOP returns them.
+    ///
+    /// Returns an owned `Vec` rather than a borrowed iterator to avoid
+    /// threading the GOP lifetime through callers. The allocation is
+    /// small (a handful of `(usize, usize)` pairs) and is only made
+    /// when the caller needs the list (boot-time serial dump, mode
+    /// selection). An iterator form would require `&mut self` because
+    /// `gop.modes()` takes `&mut GraphicsOutput` internally, which
+    /// makes a shared-borrow return shape impractical; the owned vec
+    /// avoids that problem entirely.
+    ///
+    /// The call site in `main.rs` is added in step 1b; the attribute
+    /// below suppresses the dead-code lint in the meantime.
+    #[allow(dead_code)]
+    pub fn available_modes(&mut self) -> Vec<(usize, usize)> {
+        self.gop.modes().map(|m| m.info().resolution()).collect()
     }
 
     /// Fill the entire screen with the background colour.

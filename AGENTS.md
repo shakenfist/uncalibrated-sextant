@@ -94,30 +94,36 @@ invokes directly.
     to understand the SPICE infrastructure path (`make spice`), the
     port-wait retry logic, and the Ctrl-C exit convention
 
-## Current phase
+## Most recently landed
 
-**Locked-bootloader phase 3** (iteration, docs, inventory closeout).
-Phases 1–2 of the locked-bootloader milestone have landed. The binary
-runs the full scene state machine: a wordless lone-cursor Awaiting
-screen, Booting (scripted `BOOT_SCRIPT_PRE` + locked-bootloader
-sub-state-machine + `BOOT_SCRIPT_POST`, each step at 200 ms pacing),
-and Parked. The locked-bootloader scene plays between the
-`SENSORIUM: nominal` and `EMERGENCY SAFE BOOT COMPLETE` lines; it
-exercises SPICE clipboard paste as a real channel test. On the final
-keypress, `serial::drain` emits one CRLF-terminated line per recorded
-event to COM1 (`t=<ms> type=...`) as groundwork for the eventual
-gRPC-over-serial transport, then ACPI-shuts-down.
+**Display-mode keystrokes** (all three phases complete). Keys `'1'`–`'6'`
+switch the GOP framebuffer to fixed resolutions (640×480, 800×600,
+1024×768, 1280×720, 1280×1024, 1920×1080); key `'0'` walks every mode
+the firmware exposes with a one-second dwell per step, interruptible by
+any keypress. A bottom-row toast names the applied resolution after each
+switch; a `ModeSwitch` ring-buffer event carries the applied (not
+requested) dimensions queried back from `gop.current_mode_info()`, so a
+future ryll assertion harness has machine-checkable ground truth.
+`ModeCycle` events capture the full cycle walk (count, interrupted flag).
+
+`make spice-ryll` against ryll's `display-mode-ui` branch is the
+canonical acceptance path for both the display-mode affordance and the
+locked-bootloader scene. Mode keys work in Awaiting, Booting, and
+Parked.
+
+**LOAD-BEARING CARVE-OUT for sub-agents touching scene code.**
+`try_handle_mode_key` is not called from `src/bootloader.rs`, and that
+must stay true. The locked-bootloader R/I/A and paste-prompt loops own
+their own key handling; mode keys received there are logged-and-ignored.
+Pressing `'1'` at the `(R)etry, (I)gnore, or (A)bort?` prompt does not
+change the display mode — this is intentional and the bootloader's
+carve-out is load-bearing for correct scene semantics.
 
 A committed reference screenshot lives at
 `docs/images/boot-sequence.png` and can be regenerated via
 `make screenshot`. Style enforcement via pre-commit and
 `scripts/check-rust.sh` is the gate for all contributions; install
 the hooks with `pre-commit install` before your first commit.
-
-Use `make spice-ryll` (not `make spice`) for the locked-bootloader
-scene; ryll's `Ctrl+Alt+V` shortcut delivers clipboard paste as
-Inputs-channel keystrokes. See the *Locked-bootloader scene*
-subsection in README.md for the full operator UX.
 
 ## Design principles to respect
 

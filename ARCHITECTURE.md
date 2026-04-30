@@ -196,6 +196,30 @@ vdagent is present. See the *Locked-bootloader scene* subsection in
 README.md for the paste shortcut (`Ctrl+Alt+V`, not `Ctrl+Shift+V`)
 and the four flow paths.
 
+**Runtime mode switching.** `Renderer::set_mode(req_w, req_h)` is the
+canonical mode-change entry point. It re-walks `gop.modes()`, picks the
+nearest available mode via `nearest_mode`, calls `gop.set_mode`, and
+always queries back the applied dimensions via `gop.current_mode_info()`
+to update the cached `width` / `height` fields. The return value is the
+applied (not requested) `(width, height)` pair; this is what the
+`ModeSwitch` ring-buffer event carries so ryll-driven assertions see
+ground truth, not a best-effort echo of the request. UEFI 2.10 §12.9
+specifies that `set_mode` invalidates the framebuffer; honouring that
+contract is `Scene::repaint`'s job — every mode switch is followed
+immediately by `repaint`, which calls `renderer.clear()`, repaints
+chrome, and replays the right prefix of the boot script using the
+per-phase `RepaintState` snapshot. `RepaintState` is an enum private to
+`src/scene.rs` tracking `Chrome`, `Awaiting`, `BootingPre { played }`,
+`BootingBootloader { pre_played }`, `BootingPost { ... }`, and
+`Parked { ... }`; each runner updates it at well-defined phase
+transitions so `repaint` always has enough state to reconstruct the
+screen. The locked-bootloader sub-state-machine is **carved out** from
+the mode-key dispatcher: `try_handle_mode_key` is not called from
+`src/bootloader.rs`. Mode keys received during the R/I/A or
+paste-prompt loops are logged-and-ignored; the `BootingBootloader`
+repaint variant is therefore unreachable in production but modelled for
+totality with a documented PRE-only fallback.
+
 Phase 6 added `src/serial.rs` — two Serial-protocol writers sharing a
 `with_serial` helper that briefly opens
 `uefi::proto::console::serial::Serial` via

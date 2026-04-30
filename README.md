@@ -12,8 +12,9 @@ have to verify before you can trust them.
 
 ## Status
 
-The first-playable milestone and the locked-bootloader scene (Phase 2
-of the locked-bootloader milestone) have landed. The binary runs the
+The first-playable milestone, the locked-bootloader scene (Phase 2
+of the locked-bootloader milestone), and the display-mode keystrokes
+milestone have landed. The binary runs the
 full scene state machine — a wordless lone-cursor "awaiting" screen, a
 scripted boot sequence with the locked-bootloader sub-scene, and a
 SYSTEM ONLINE parking screen — with blinking cursor, LFSR-driven glitch
@@ -131,6 +132,49 @@ depends on the keymap layer).
   visible countdown appears (`Awaiting decoded payload. Aborting
   in NN...`, counting from 30 to 00 at 1 Hz), then
   `BOOTLOADER UNRECOVERABLE. SHUTTING DOWN.`, then ACPI shutdown.
+
+### Display-mode keystrokes
+
+The following keys switch the GOP framebuffer to a specific resolution
+at any time — from the awaiting screen, during booting, or from the
+parked screen:
+
+| Key | Resolution  |
+|-----|-------------|
+| `1` | 640×480     |
+| `2` | 800×600     |
+| `3` | 1024×768    |
+| `4` | 1280×720    |
+| `5` | 1280×1024   |
+| `6` | 1920×1080   |
+| `0` | Cycle through every available mode, ~1 s per mode (interruptible) |
+
+After each switch a brief toast appears on the bottom row naming the
+applied resolution (e.g. `1024×768`). If the firmware does not expose
+the exact requested mode the nearest available mode is used instead and
+the toast shows the substitution form (`requested 1280×720 → using
+1024×768`). Under default OVMF + QEMU all six bindings resolve exactly
+— no substitutions are needed — but a future host or `-vga` variant
+may differ.
+
+Key `0` walks every mode the firmware exposes with a one-second dwell
+per step. Pressing any key during the walk stops the cycle; if the
+interrupting key is itself a mode key (`1`–`6`), the walk stops *and*
+that resolution is applied.
+
+**Bootloader carve-out.** Mode keys are silently ignored inside the
+locked-bootloader R/I/A prompt and paste-prompt loops; those scenes own
+their own key handling. Pressing `1` at `(R)etry, (I)gnore, or (A)bort?`
+logs the keypress and does nothing — the mode does not change. Mode
+keys resume their normal meaning once the bootloader scene completes.
+
+**Acceptance test path.** `make spice-ryll` against ryll's
+`display-mode-ui` branch is the canonical test for ryll window-tracking
+behaviour. With ryll's *Obey guest size hints* hamburger toggle on (the
+default), ryll's window refits to each new resolution. With the toggle
+off, ryll's window stays pinned while the binary's scene resizes inside
+it — allowing edge-case testing of toggle-off → mode-change → toggle-on
+round trips and maximised-window behaviour.
 
 Host dependencies for `make qemu` and `make release`: `qemu-system-x86_64`,
 `ovmf`, and `qemu-utils` (for `qemu-img`). Docker remains the only

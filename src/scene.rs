@@ -31,6 +31,19 @@ const PACE_LINE_MS: u64 = 200; // after a normal line
 /// runtime mode switch) cannot drift out of sync.
 const SYSTEM_ONLINE_TEXT: &str = "SYSTEM ONLINE. AWAITING INSTRUCTIONS.";
 
+/// Keystroke → (width, height) request for runtime mode
+/// switches. Matches the master plan's documented binding
+/// table. Key '0' is handled separately by the cycle path
+/// (added in step 2c) and is therefore not in this table.
+const MODE_KEYS: &[(char, u32, u32)] = &[
+    ('1', 640, 480),
+    ('2', 800, 600),
+    ('3', 1024, 768),
+    ('4', 1280, 720),
+    ('5', 1280, 1024),
+    ('6', 1920, 1080),
+];
+
 /// Stall for `ms` milliseconds and advance the monotonic clock.
 ///
 /// Free function so both `Scene` and the locked-bootloader
@@ -195,7 +208,6 @@ static BOOT_SCRIPT_POST: &[SceneStep<'static>] = &[
 /// drawing and a runtime mode switch from outside cannot reconstruct
 /// its sub-state-machine.
 #[derive(Copy, Clone, Debug)]
-#[allow(dead_code)] // Phase 2 wires the dispatcher that consumes this.
 enum RepaintState {
     /// Initial state before `run_awaiting` starts: only the chrome
     /// (logo) has been painted.
@@ -485,7 +497,6 @@ impl Scene {
     /// repainted output is pixel-identical to the original draw. The
     /// `count` argument bounds how many steps from `script` are
     /// replayed; rows are assigned as `start_row..start_row + count`.
-    #[allow(dead_code)] // Phase 2 wires the dispatcher that consumes this.
     fn repaint_script_prefix(
         renderer: &mut Renderer,
         script: &[SceneStep<'static>],
@@ -535,7 +546,6 @@ impl Scene {
     /// The repaint reads `self.repaint_state` and replays just the
     /// prefix of the boot scripts the snapshot describes. Cursor state
     /// during awaiting / parked is left to the next blink tick.
-    #[allow(dead_code)] // Phase 2 wires the dispatcher that consumes this.
     fn repaint(&mut self, renderer: &mut Renderer) {
         // Honour the framebuffer-invalidation contract.
         renderer.clear();
@@ -583,6 +593,39 @@ impl Scene {
                 renderer.draw_line(SYSTEM_ONLINE_TEXT, system_online_row);
             }
         }
+    }
+
+    /// Try to handle a keystroke as a mode-switch request.
+    /// Returns `true` if the keystroke was a mode key and was
+    /// consumed; `false` if the caller should handle it as
+    /// usual.
+    ///
+    /// Mode-switch path: look up `ch` in `MODE_KEYS`, call
+    /// `Renderer::set_mode` with the requested dimensions,
+    /// push a `ModeSwitch` event with both the request and
+    /// the queried-back applied resolution, and call
+    /// `Scene::repaint` so the framebuffer (invalidated by
+    /// `set_mode` per UEFI 2.10 §12.9) shows the current
+    /// scene state at the new dimensions.
+    ///
+    /// Key '0' (cycle) is handled in step 2c. For now this
+    /// dispatcher returns `false` for '0', so the caller
+    /// continues to treat it as a non-mode key.
+    #[allow(dead_code)] // Wired into runner sites in step 2d.
+    pub(crate) fn try_handle_mode_key(&mut self, renderer: &mut Renderer, ch: char) -> bool {
+        let Some(&(_, req_w, req_h)) = MODE_KEYS.iter().find(|(c, _, _)| *c == ch) else {
+            return false;
+        };
+        let (applied_w, applied_h) = renderer.set_mode(req_w as usize, req_h as usize);
+        self.ring.push(Event::ModeSwitch {
+            requested_w: req_w,
+            requested_h: req_h,
+            applied_w: applied_w as u32,
+            applied_h: applied_h as u32,
+            timestamp_ms: self.clock_ms,
+        });
+        self.repaint(renderer);
+        true
     }
 
     // ----------------------------------------------------------------

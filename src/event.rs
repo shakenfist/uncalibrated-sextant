@@ -88,8 +88,6 @@ pub enum Event {
     BootloaderTimeout { timestamp_ms: u64 },
     /// GOP mode switched (or attempted to switch) at the
     /// operator's request.
-    // Emitter wired in Phase 2; suppress dead-code lint until then.
-    #[allow(dead_code)]
     ModeSwitch {
         requested_w: u32,
         requested_h: u32,

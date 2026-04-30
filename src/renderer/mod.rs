@@ -283,7 +283,6 @@ impl Renderer {
 
     /// Number of whole 8x16 text cells that fit between the top
     /// and bottom overscan margins on the current screen.
-    #[allow(dead_code)] // Wired in step 2b for toast row positioning.
     pub fn screen_rows(&self) -> usize {
         (self.height.saturating_sub(2 * MARGIN_Y)) / CELL_H
     }

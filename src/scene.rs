@@ -12,6 +12,10 @@
 // Timestamps are a monotonic millisecond counter accumulated from stall
 // durations; good enough for Phase 6 serial drain without real RTC.
 
+extern crate alloc;
+
+use alloc::format;
+
 use core::time::Duration;
 
 use crate::bootloader;
@@ -25,6 +29,9 @@ pub(crate) const POLL_MS: u64 = 50;
 
 /// Pacing delays in milliseconds.
 const PACE_LINE_MS: u64 = 200; // after a normal line
+
+/// On-screen toast lifetime after a mode switch.
+const TOAST_MS: u64 = 1500;
 
 /// Parking-screen prompt. Defined at module scope so `run_parked`
 /// (which draws it) and `Scene::repaint` (which redraws it after a
@@ -189,6 +196,13 @@ static BOOT_SCRIPT_POST: &[SceneStep<'static>] = &[
     SceneStep::Line("EMERGENCY SAFE BOOT COMPLETE. OPERATOR ASSISTANCE REQUIRED."),
 ];
 
+/// Per-instance toast tracking. Toast text is not stored
+/// once drawn — only the remaining TTL matters for cleanup.
+#[derive(Copy, Clone, Debug)]
+struct ToastState {
+    remaining_ms: u64,
+}
+
 /// Snapshot of what is currently on screen, sufficient to repaint from
 /// scratch at the renderer's current dimensions. Updated by the scene
 /// runners as they play.
@@ -252,6 +266,8 @@ pub struct Scene {
     /// Snapshot of what is currently on screen. Updated by the scene
     /// runners as they play; consulted by `Scene::repaint`.
     repaint_state: RepaintState,
+    /// Active on-screen toast state; `None` when no toast is visible.
+    toast: Option<ToastState>,
 }
 
 impl Scene {
@@ -263,6 +279,7 @@ impl Scene {
             cursor: CursorState::new(),
             clock_ms: 0,
             repaint_state: RepaintState::Chrome,
+            toast: None,
         }
     }
 
@@ -595,6 +612,45 @@ impl Scene {
         }
     }
 
+    /// Draw a toast on the bottom row naming the applied mode.
+    /// Format depends on whether the firmware substituted:
+    ///   exact       -> "mode 1024x768"
+    ///   substitute  -> "requested 1280x720 -> using 1024x768"
+    ///
+    /// ASCII only — the renderer's font is ASCII (any non-ASCII
+    /// character renders as `?`). Stores `Some(ToastState { ... })`
+    /// on `self.toast` so `tick_toast` can clear it later.
+    fn draw_toast(&mut self, renderer: &mut Renderer, requested: (u32, u32), applied: (u32, u32)) {
+        let row = renderer.screen_rows().saturating_sub(1);
+        let text = if requested == applied {
+            format!("mode {}x{}", applied.0, applied.1)
+        } else {
+            format!(
+                "requested {}x{} -> using {}x{}",
+                requested.0, requested.1, applied.0, applied.1
+            )
+        };
+        renderer.draw_text_at(&text, 0, row);
+        self.toast = Some(ToastState {
+            remaining_ms: TOAST_MS,
+        });
+    }
+
+    /// Tick the toast TTL by `dt_ms`. If the TTL elapses, clear
+    /// the toast by repainting the entire scene (cheap, and the
+    /// canonical way to undo any partial-row state).
+    #[allow(dead_code)] // Wired into runner blink loops in step 2d.
+    fn tick_toast(&mut self, renderer: &mut Renderer, dt_ms: u64) {
+        if let Some(state) = self.toast.as_mut() {
+            if state.remaining_ms <= dt_ms {
+                self.toast = None;
+                self.repaint(renderer);
+            } else {
+                state.remaining_ms -= dt_ms;
+            }
+        }
+    }
+
     /// Try to handle a keystroke as a mode-switch request.
     /// Returns `true` if the keystroke was a mode key and was
     /// consumed; `false` if the caller should handle it as
@@ -606,7 +662,8 @@ impl Scene {
     /// the queried-back applied resolution, and call
     /// `Scene::repaint` so the framebuffer (invalidated by
     /// `set_mode` per UEFI 2.10 §12.9) shows the current
-    /// scene state at the new dimensions.
+    /// scene state at the new dimensions. Then draws a toast
+    /// on the bottom row naming the applied resolution.
     ///
     /// Key '0' (cycle) is handled in step 2c. For now this
     /// dispatcher returns `false` for '0', so the caller
@@ -625,6 +682,11 @@ impl Scene {
             timestamp_ms: self.clock_ms,
         });
         self.repaint(renderer);
+        self.draw_toast(
+            renderer,
+            (req_w, req_h),
+            (applied_w as u32, applied_h as u32),
+        );
         true
     }
 

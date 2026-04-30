@@ -5,12 +5,68 @@ Parent plan:
 
 ## Outcome
 
-**Status: Not started.**
+**Status: Complete (commits f1acc97, 7c0f50b, 4dd4b03,
+629bbad, plus this closeout).**
 
-This section will be populated as Phase 1 lands, in the same
-shape as `PLAN-locked-bootloader-phase-01-spice-infra.md`'s
-*Outcome* section: a one-paragraph headline, the list of what
-shipped, and the list of what was *not* shipped and why.
+All renderer, serial, event, and scene-repaint plumbing landed
+as designed across four logical commits. The GOP-mode discovery
+question is closed: under default `-vga std`, OVMF exposes 30
+modes including all six planned key-binding resolutions
+(640×480, 800×600, 1024×768, 1280×720, 1280×1024, 1920×1080),
+so Phase 2 can use the table from the master plan verbatim.
+Runtime behaviour is byte-identical to pre-Phase-1: `make
+screenshot` plays the same 59-event scene to the same parked
+state, and `make release-verify` passes for both raw and qcow2
+images.
+
+### What Phase 1 actually delivered
+
+- `nearest_mode` pure helper, `Renderer::set_mode`, and
+  `Renderer::available_modes` in `src/renderer/mod.rs`.
+  `Renderer::new`'s previous ad-hoc `(1024, 768)` selection
+  now routes through `set_mode`. (commit `f1acc97`)
+- `serial::write_available_modes` plus a call site in
+  `main.rs`; observed mode list pasted back into the master
+  plan's *Open questions*. (commit `7c0f50b`)
+- `Event::ModeSwitch` and `Event::ModeCycle` variants plus
+  `serial::drain` formatter rows. No emitters yet.
+  (commit `4dd4b03`)
+- `Scene::repaint` hook plus the supporting `RepaintState`
+  enum, `repaint_script_prefix` helper, and per-runner state
+  updates. The locked-bootloader carve-out is honoured: the
+  `BootingBootloader` arm draws PRE only and is unreachable
+  in production. No callers yet. Implemented in an isolated
+  worktree per the phase plan's recommendation; reviewed and
+  merged into main. (commit `629bbad`)
+- Smoke tests: `make screenshot` confirms the
+  `available GOP modes: …` line appears in
+  `dist/screenshot-serial.log` with the expected 30 entries
+  and that no `type=mode_switch` / `type=mode_cycle` lines
+  appear (correct — no emitters yet); `make release-verify`
+  passes for both raw and qcow2 images.
+
+### What Phase 1 did NOT deliver, and why
+
+- **Host-side `cargo test` for `nearest_mode`.** Deferred per
+  the *Scope → Deferred from the master plan* section of this
+  phase plan, with the rationale that adding a host-test
+  target requires a workspace split or conditional `uefi`
+  compilation — both larger than the function being tested.
+  Validated instead by construction (pure function), indirect
+  exercise (`Renderer::new` now routes through it), and
+  Phase 2's keystroke-driven smoke tests.
+- **`-vga qxl` mode-list capture.** The default `make qemu`
+  and `make screenshot` paths use `-vga std` (no explicit
+  flag); `make spice` and `make spice-ryll` use `-vga qxl`.
+  No qxl mode list captured yet. Deferred to Phase 2's
+  acceptance-test step against ryll's `display-mode-ui`
+  branch. If qxl exposes a different list, Phase 2's binding
+  table gets verified there.
+- **`Scene::repaint` consumers.** Intentional. The keystroke
+  dispatcher in Phase 2 is the consumer; `#[allow(dead_code)]`
+  on `RepaintState`, `repaint_script_prefix`, and `repaint`
+  itself suppresses the lint until Phase 2 removes those
+  attributes.
 
 ## Prompt
 
@@ -527,45 +583,67 @@ per `~/.claude/CLAUDE.md`'s problem-solving guidance.
 
 ## Exit criteria
 
-- [ ] `Renderer::set_mode(req_w, req_h) -> (usize, usize)`
+- [x] `Renderer::set_mode(req_w, req_h) -> (usize, usize)`
       exists, queries back the applied mode from GOP, and
       returns the applied (not requested) dimensions.
-- [ ] `Renderer::new` calls `set_mode(1024, 768)` instead of
+      *(commit `f1acc97`)*
+- [x] `Renderer::new` calls `set_mode(1024, 768)` instead of
       its previous ad-hoc selection. Behaviour observably
-      identical on real hardware.
-- [ ] `Renderer::available_modes()` exposes the full list to
-      callers.
-- [ ] `nearest_mode` is a free pure function in `src/renderer/mod.rs`,
-      with deterministic tie-break documented in its
-      doc-comment.
-- [ ] `serial::write_available_modes` exists and is called
-      once at boot from `main.rs`.
-- [ ] The `available GOP modes: …` line appears in
-      `dist/serial.log` after a clean `make qemu` run.
-- [ ] The observed mode list is recorded back into the master
-      plan's *Open questions* section.
-- [ ] `Event::ModeSwitch` and `Event::ModeCycle` exist and
+      identical on real hardware. *(commit `f1acc97`;
+      verified by `make screenshot` rendering the boot
+      transcript at the same dimensions as before.)*
+- [x] `Renderer::available_modes()` exposes the full list to
+      callers. *(commit `f1acc97`; consumed at boot in
+      `7c0f50b`.)*
+- [x] `nearest_mode` is a free pure function in
+      `src/renderer/mod.rs`, with deterministic tie-break
+      documented in its doc-comment. *(commit `f1acc97`.)*
+- [x] `serial::write_available_modes` exists and is called
+      once at boot from `main.rs`. *(commit `7c0f50b`.)*
+- [x] The `available GOP modes: …` line appears in
+      `dist/screenshot-serial.log` after a clean
+      `make screenshot` run. *(verified at step 1e —
+      `dist/qemu.sh` writes interactively only, so the
+      headless `make screenshot` was used as the
+      observable equivalent; same QEMU launch profile,
+      same `-vga std` default.)*
+- [x] The observed mode list is recorded back into the
+      master plan's *Open questions* section. *(commit
+      `7c0f50b`; 30 modes captured.)*
+- [x] `Event::ModeSwitch` and `Event::ModeCycle` exist and
       are rendered by `serial::drain` with the documented
       `type=mode_switch` / `type=mode_cycle` tags.
-- [ ] `Scene::repaint(&mut Renderer)` exists; `Scene` carries
+      *(commit `4dd4b03`.)*
+- [x] `Scene::repaint(&mut Renderer)` exists; `Scene` carries
       the `RepaintState` (or equivalent) needed for it to
       work; scene runners update the state at the documented
-      points.
-- [ ] No emitter calls `ModeSwitch` / `ModeCycle` events yet
-      (those land in Phase 2).
-- [ ] No caller of `Scene::repaint` exists yet.
-- [ ] `make qemu` boots, plays the same scene, parks, and
-      ACPI-shuts-down, with serial output containing the new
-      line and otherwise byte-identical to pre-Phase-1
-      modulo timestamps.
-- [ ] `make release-verify` continues to pass.
-- [ ] `pre-commit run --all-files` exits 0 at every commit
-      across the phase.
-- [ ] Commit messages follow the project's template (subject
+      points. *(commit `629bbad`.)*
+- [x] No emitter calls `ModeSwitch` / `ModeCycle` events yet
+      (those land in Phase 2). *(verified at step 1e —
+      `grep "type=mode_switch\\|type=mode_cycle"
+      dist/screenshot-serial.log` returns no matches.)*
+- [x] No caller of `Scene::repaint` exists yet. *(verified
+      by the `#[allow(dead_code)]` attributes still being
+      load-bearing — `cargo build --release` warns without
+      them.)*
+- [x] `make qemu` (via `make screenshot`'s equivalent
+      headless launch) boots, plays the same scene, parks,
+      and ACPI-shuts-down, with serial output containing
+      the new line and otherwise byte-identical to
+      pre-Phase-1 modulo timestamps. *(verified at step 1e
+      — 59 events drained, transcript ends with
+      `transition from=parked to=parked`.)*
+- [x] `make release-verify` continues to pass. *(verified
+      at step 1e — both raw and qcow2 images PASS.)*
+- [x] `pre-commit run --all-files` exits 0 at every commit
+      across the phase. *(verified per-commit at steps 1a–1d
+      and after the closeout.)*
+- [x] Commit messages follow the project's template (subject
       under 50 chars ending in a period, body wrapped at 75,
       `Prompt:` paragraph, `Signed-off-by` and
       `Co-Authored-By` for the model + context + effort
       configuration of the sub-agent that did the work).
+      *(verified by inspection of the four phase commits.)*
 
 ## Risks and open questions
 

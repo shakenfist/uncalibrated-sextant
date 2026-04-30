@@ -289,7 +289,7 @@ them drift.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Renderer `set_mode` + redraw hook + ring-buffer events | PLAN-display-mode-keystrokes-phase-01-renderer.md | Not started |
+| 1. Renderer `set_mode` + redraw hook + ring-buffer events | [PLAN-display-mode-keystrokes-phase-01-renderer.md](PLAN-display-mode-keystrokes-phase-01-renderer.md) | Complete (commits f1acc97, 7c0f50b, 4dd4b03, 629bbad, plus this closeout) |
 | 2. Keystroke handlers in awaiting / booting / parked + cycle + on-screen toast | PLAN-display-mode-keystrokes-phase-02-keystrokes.md | Not started |
 | 3. Iteration against ryll `display-mode-ui`, documentation, inventory closeout | PLAN-display-mode-keystrokes-phase-03-docs.md | Not started |
 

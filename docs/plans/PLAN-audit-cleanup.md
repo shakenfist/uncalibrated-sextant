@@ -203,7 +203,7 @@ them drift.
 |-------|------|--------|
 | 1. Real bug fixes | [PLAN-audit-cleanup-phase-01-bugs.md](PLAN-audit-cleanup-phase-01-bugs.md) | Complete (commits a42af74, 5fd347c, 56b8028, plus this closeout) |
 | 2. Structural dedup | [PLAN-audit-cleanup-phase-02-structural.md](PLAN-audit-cleanup-phase-02-structural.md) | Complete (commits ee8ddd1, c5d84ca, 46baa27, e0734e1, 64a0297, 118c17f, plus this closeout) |
-| 3. Test coverage and release verification | PLAN-audit-cleanup-phase-03-tests.md | Not started |
+| 3. Test coverage and release verification | [PLAN-audit-cleanup-phase-03-tests.md](PLAN-audit-cleanup-phase-03-tests.md) | Complete (commits d862ad3, 96720ab, plus this closeout) |
 
 ### Phase 1 sketch — real bug fixes
 
@@ -371,38 +371,48 @@ Same as earlier milestones:
 
 This cleanup is complete when:
 
-- [ ] Three real bug fixes landed: renderer bounds-check,
+- [x] Three real bug fixes landed: renderer bounds-check,
       README toast format, ARCHITECTURE stale name.
-- [ ] `PACE_LINE_MS` declared in exactly one location;
-      bootloader imports it.
-- [ ] `Renderer::draw_glyph` and
+      *(Phase 1, commits a42af74 / 5fd347c / 56b8028.)*
+- [x] `PACE_LINE_MS` declared in exactly one location;
+      bootloader imports it. *(Phase 2, commit ee8ddd1.)*
+- [x] `Renderer::draw_glyph` and
       `Renderer::draw_cursor_glyph` share a private
-      `blit_glyph_bytes` helper.
-- [ ] `Scene::run_awaiting` and `Scene::run_parked`
+      `blit_glyph_bytes` helper. *(Phase 2, commit
+      c5d84ca.)*
+- [x] `Scene::run_awaiting` and `Scene::run_parked`
       share a `blink_until_key` helper; both runners
-      become a two-line stub plus the helper.
-- [ ] `bootloader::run_timeout` carries a
+      become a two-line stub plus the helper. *(Phase 2,
+      commit 118c17f.)*
+- [x] `bootloader::run_timeout` carries a
       `debug_assert!(TIMEOUT_COUNTDOWN_S <= 99)`.
-- [ ] `Scene::try_handle_mode_key` and
+      *(Phase 2, commit 46baa27.)*
+- [x] `Scene::try_handle_mode_key` and
       `Scene::cycle_modes` are private (not
-      `pub(crate)`).
-- [ ] `RepaintState` carries a doc comment documenting
-      the per-scene-runner intent.
-- [ ] `make screenshot-modes` exists, runs headless, and
-      asserts a `type=mode_switch` line.
-- [ ] `scripts/verify-release.sh` greps for both the
+      `pub(crate)`). *(Phase 2, commit e0734e1.)*
+- [x] `RepaintState` carries a doc comment documenting
+      the per-scene-runner intent. *(Phase 2, commit
+      64a0297.)*
+- [x] `make screenshot-modes` exists, runs headless, and
+      asserts a `type=mode_switch` line. *(Phase 3,
+      commit d862ad3.)*
+- [x] `scripts/verify-release.sh` greps for both the
       startup banner *and* the `available GOP modes:`
-      line.
-- [ ] `make screenshot` produces the same 59-event
+      line. *(Phase 3, commit 96720ab.)*
+- [x] `make screenshot` produces the same 59-event
       transcript as the pre-cleanup baseline (no
-      regression in the no-keystroke path).
-- [ ] `make qemu`, `make spice`, `make spice-ryll`,
+      regression in the no-keystroke path). *(verified
+      after every commit.)*
+- [x] `make qemu`, `make spice`, `make spice-ryll`,
       `make release-verify` all continue to work.
-- [ ] `pre-commit run --all-files` exits 0 at every
+      *(verified at Phase 3 step 3b — `make
+      release-verify` PASS for both raw + qcow2 with the
+      new combined check.)*
+- [x] `pre-commit run --all-files` exits 0 at every
       commit across the plan.
-- [ ] Commit messages follow the project's template.
-- [ ] `docs/plans/index.md` master-plans row updated to
-      *Complete* with the commit range.
+- [x] Commit messages follow the project's template.
+- [x] `docs/plans/index.md` master-plans row updated to
+      *Complete* with the commit range. *(this closeout.)*
 
 ### Future work
 

@@ -7,9 +7,52 @@ Previous phases:
 
 ## Outcome
 
-**Status: Not started.**
+**Status: Complete (commits d862ad3, 96720ab, plus this
+closeout).**
 
-This section will be populated as Phase 3 lands.
+Both test-coverage gaps the audit found are plugged.
+`make screenshot-modes` exercises the dispatcher headlessly
+and asserts the resulting `ModeSwitch` event in serial;
+`make release-verify` now confirms both the startup banner
+and the `available GOP modes:` line in raw + qcow2 release
+artifacts.
+
+### What Phase 3 actually delivered
+
+- `scripts/screenshot-modes.sh` modelled on
+  `scripts/screenshot.sh`. Drives the binary headless
+  through the existing bootloader-Ignore-paste sequence to
+  parking, presses `'3'` (1024×768 — the binary's default
+  mode), waits 2 s for the toast TTL to clear, sends
+  `'space'` to exit parking and drain events. Asserts
+  exactly one `type=mode_switch requested=1024x768
+  applied=1024x768` line in
+  `dist/screenshot-modes-serial.log`. Drain count is 61
+  (59 baseline + Keypress for `'3'` + ModeSwitch). Test
+  passed on first run. Adds the `make screenshot-modes`
+  Makefile target. (commit `d862ad3`)
+- `scripts/verify-release.sh` adds a `grep -qF "available
+  GOP modes:"` check after the existing banner-found
+  branch. Both raw and qcow2 release artifacts PASS the
+  combined check. (commit `96720ab`)
+
+### What Phase 3 did NOT deliver, and why
+
+Per master plan's *Future work* (carried forward from the
+audit's deferred items):
+
+- **Strict 59-event assertion in `screenshot.sh`.** Forces
+  every milestone to update the constant; left as
+  documented drift.
+- **Headless cycle-mode test.** Impractical at 30 s per
+  cycle without a build-flag-configurable
+  `CYCLE_DWELL_MS`.
+- **`tools/audit/wave1.sh` and `wave2-mechanical.sh`.**
+  Worth doing once the operator's PR migration lands; not
+  part of this plan.
+- **Workspace split for host-side `cargo test`.** Defer
+  until two or three pure functions accumulate behind the
+  same workspace boundary.
 
 ## Prompt
 
@@ -276,28 +319,37 @@ remain clean.
 
 ## Exit criteria
 
-- [ ] `scripts/screenshot-modes.sh` exists, is
+- [x] `scripts/screenshot-modes.sh` exists, is
       executable, drives the binary headless to parking,
       presses `'3'`, exits cleanly, and asserts exactly
       one `type=mode_switch requested=1024x768
       applied=1024x768` line in
-      `dist/screenshot-modes-serial.log`.
-- [ ] `make screenshot-modes` Makefile target exists and
-      runs the script.
-- [ ] `scripts/verify-release.sh` greps for both the
+      `dist/screenshot-modes-serial.log`. *(commit
+      `d862ad3`.)*
+- [x] `make screenshot-modes` Makefile target exists and
+      runs the script. *(commit `d862ad3`.)*
+- [x] `scripts/verify-release.sh` greps for both the
       startup banner *and* `available GOP modes:`.
       Failure on either produces a non-zero exit.
-- [ ] `make screenshot` (existing) still passes
-      unchanged.
-- [ ] `make screenshot-modes` (new) passes.
-- [ ] `make release-verify` still passes (raw + qcow2).
-- [ ] `pre-commit run --all-files` exits 0 at every
+      *(commit `96720ab`.)*
+- [x] `make screenshot` (existing) still passes
+      unchanged. *(verified at every step of Phase 1 and
+      Phase 2; unchanged in Phase 3.)*
+- [x] `make screenshot-modes` (new) passes. *(verified at
+      step 3a — drain count 61, ModeSwitch line
+      confirmed.)*
+- [x] `make release-verify` still passes (raw + qcow2).
+      *(verified at step 3b — both PASS the combined
+      banner + GOP-mode-dump check.)*
+- [x] `pre-commit run --all-files` exits 0 at every
       commit (including shellcheck on the new script).
-- [ ] Phase plan *Outcome* + *Exit criteria* populated.
-- [ ] Master plan *Execution* table marks Phase 3
+- [x] Phase plan *Outcome* + *Exit criteria* populated.
+      *(this closeout.)*
+- [x] Master plan *Execution* table marks Phase 3
       Complete; *Success criteria* checklist ticked.
-- [ ] `docs/plans/index.md` audit-cleanup row marks
-      *Complete*.
+      *(this closeout.)*
+- [x] `docs/plans/index.md` audit-cleanup row marks
+      *Complete*. *(this closeout.)*
 
 ## Risks
 

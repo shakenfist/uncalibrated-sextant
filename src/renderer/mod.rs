@@ -170,26 +170,20 @@ impl Renderer {
         });
     }
 
-    /// Render a single glyph at the given text cell column and row.
+    /// Blit an 8x16 glyph from raw bitmap bytes to the cell at `(col, row)`.
     ///
-    /// Unknown or out-of-range characters fall back to `'?'`.
-    /// Issues exactly one `BltOp::BufferToVideo` call (principle 6).
-    pub fn draw_glyph(&mut self, ch: char, col: usize, row: usize) {
-        if col >= self.screen_cols() || row >= self.screen_rows() {
-            return;
-        }
-        let index = if (ch as u32) < 0x80 {
-            ch as usize
-        } else {
-            b'?' as usize
-        };
-        let bitmap = &font::FONT_8X16[index];
-
-        // Build an 8x16 BltPixel scratch buffer from the glyph bitmap.
+    /// Composes the `BltPixel` scratch buffer from `bytes` (each bit is a
+    /// foreground pixel, MSB-leftmost per BDF convention) and issues exactly
+    /// one `BltOp::BufferToVideo` call (principle 6).
+    ///
+    /// Out-of-bounds `(col, row)` is the **caller's contract**: this helper
+    /// does not bounds-check. The guards on `draw_glyph` and
+    /// `draw_cursor_glyph` enforce the invariant for all callers that come
+    /// through those public entry points.
+    fn blit_glyph_bytes(&mut self, bytes: &[u8; 16], col: usize, row: usize) {
         let mut buf = [BG; CELL_W * CELL_H];
-        for (r, &byte) in bitmap.iter().enumerate() {
+        for (r, &byte) in bytes.iter().enumerate() {
             for c in 0..CELL_W {
-                // BDF: bit 7 is the leftmost pixel (MSB-leftmost).
                 if byte & (0x80 >> c) != 0 {
                     buf[r * CELL_W + c] = FG;
                 }
@@ -204,6 +198,22 @@ impl Renderer {
             dest: (px, py),
             dims: (CELL_W, CELL_H),
         });
+    }
+
+    /// Render a single glyph at the given text cell column and row.
+    ///
+    /// Unknown or out-of-range characters fall back to `'?'`.
+    /// Issues exactly one `BltOp::BufferToVideo` call (principle 6).
+    pub fn draw_glyph(&mut self, ch: char, col: usize, row: usize) {
+        if col >= self.screen_cols() || row >= self.screen_rows() {
+            return;
+        }
+        let index = if (ch as u32) < 0x80 {
+            ch as usize
+        } else {
+            b'?' as usize
+        };
+        self.blit_glyph_bytes(&font::FONT_8X16[index], col, row);
     }
 
     /// Render a string of text starting at column 0 on the given row.
@@ -251,23 +261,7 @@ impl Renderer {
         if col >= self.screen_cols() || row >= self.screen_rows() {
             return;
         }
-        let mut buf = [BG; CELL_W * CELL_H];
-        for (r, &byte) in bytes.iter().enumerate() {
-            for c in 0..CELL_W {
-                if byte & (0x80 >> c) != 0 {
-                    buf[r * CELL_W + c] = FG;
-                }
-            }
-        }
-
-        let px = MARGIN_X + col * CELL_W;
-        let py = MARGIN_Y + row * CELL_H;
-        let _ = self.gop.blt(BltOp::BufferToVideo {
-            buffer: &buf,
-            src: BltRegion::Full,
-            dest: (px, py),
-            dims: (CELL_W, CELL_H),
-        });
+        self.blit_glyph_bytes(bytes, col, row);
     }
 
     /// Clear a single text cell to the background colour.

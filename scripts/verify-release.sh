@@ -72,8 +72,14 @@ wait "$QEMU_PID" 2>/dev/null || true
 rm -f "$VARS_COPY"
 
 if [ "$FOUND" -eq 1 ]; then
-    echo "PASS: banner found in serial log after ${ELAPSED}s."
-    exit 0
+    if grep -qF 'available GOP modes:' "$SERIAL_LOG"; then
+        echo "PASS: banner and GOP-mode dump found in serial log after ${ELAPSED}s."
+        exit 0
+    fi
+    echo "FAIL: banner found but no 'available GOP modes:' line in serial log."
+    echo "--- serial log tail ---"
+    tail -20 "$SERIAL_LOG"
+    exit 1
 else
     echo "FAIL: banner not found within ${TIMEOUT}s."
     if [ -f "$SERIAL_LOG" ]; then

@@ -23,12 +23,7 @@
 
 use crate::event::{BootloaderChoice, Event, RingBuffer};
 use crate::renderer::Renderer;
-use crate::scene::{poll_key, stall, POLL_MS};
-
-/// Pacing between telemetry preamble lines, matching `scene.rs`'s
-/// `PACE_LINE_MS`. Defined locally rather than reaching into `scene.rs`
-/// to keep the module self-contained.
-const PACE_LINE_MS: u64 = 200;
+use crate::scene::{poll_key, stall, PACE_LINE_MS, POLL_MS};
 
 /// Maximum length of the paste capture buffer in bytes.
 ///

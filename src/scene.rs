@@ -28,7 +28,7 @@ use crate::serial;
 pub(crate) const POLL_MS: u64 = 50;
 
 /// Pacing delays in milliseconds.
-const PACE_LINE_MS: u64 = 200; // after a normal line
+pub(crate) const PACE_LINE_MS: u64 = 200; // after a normal line
 
 /// On-screen toast lifetime after a mode switch.
 const TOAST_MS: u64 = 1500;

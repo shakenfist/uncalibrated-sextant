@@ -672,7 +672,7 @@ impl Scene {
     /// If the interrupting key is itself a mode key (`'1'`-
     /// `'6'` or `'0'`), it is honoured by recursing into
     /// `try_handle_mode_key`. Other keys are discarded.
-    pub(crate) fn cycle_modes(&mut self, renderer: &mut Renderer) {
+    fn cycle_modes(&mut self, renderer: &mut Renderer) {
         let modes = renderer.available_modes();
         let mut count: u32 = 0;
         let mut interrupted_by: Option<char> = None;
@@ -773,7 +773,7 @@ impl Scene {
     /// Key '0' delegates to `cycle_modes`, which walks every
     /// available GOP mode with a `CYCLE_DWELL_MS` dwell per
     /// step and is interruptible by any keypress.
-    pub(crate) fn try_handle_mode_key(&mut self, renderer: &mut Renderer, ch: char) -> bool {
+    fn try_handle_mode_key(&mut self, renderer: &mut Renderer, ch: char) -> bool {
         if ch == '0' {
             self.cycle_modes(renderer);
             return true;

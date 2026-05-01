@@ -1,4 +1,4 @@
-.PHONY: build clean qemu spice spice-ryll release release-verify screenshot vendor-probes
+.PHONY: build clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -29,6 +29,10 @@ release-verify: release
 
 screenshot: build
 	./scripts/screenshot.sh
+
+screenshot-modes: build
+	./scripts/mkesp.sh
+	./scripts/screenshot-modes.sh
 
 vendor-probes:
 	./scripts/vendor-language-probes.py > src/probes.rs

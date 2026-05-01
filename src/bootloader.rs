@@ -597,6 +597,21 @@ impl<'a> BootloaderScene<'a> {
     /// updates, render the error halt line, stall `ERROR_HALT_MS`,
     /// then ACPI-shutdown via `uefi::runtime::reset`. Diverges.
     fn run_timeout(&mut self) -> ! {
+        // Guard against a future bump of TIMEOUT_COUNTDOWN_S past two
+        // digits: the countdown renders into exactly two fixed cells, so
+        // a value >= 100 would silently overwrite the trailing "...".
+        // The #[allow] suppresses the clippy::assertions_on_constants
+        // lint that fires because the current value (30) makes the
+        // condition trivially true.
+        #[allow(clippy::assertions_on_constants)]
+        {
+            debug_assert!(
+                TIMEOUT_COUNTDOWN_S <= 99,
+                "run_timeout's countdown uses two cells; a three-digit \
+                 value would silently render garbage in the third cell"
+            );
+        }
+
         self.ring.push(Event::BootloaderTimeout {
             timestamp_ms: *self.clock_ms,
         });

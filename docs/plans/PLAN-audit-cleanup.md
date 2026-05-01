@@ -202,7 +202,7 @@ them drift.
 | Phase | Plan | Status |
 |-------|------|--------|
 | 1. Real bug fixes | [PLAN-audit-cleanup-phase-01-bugs.md](PLAN-audit-cleanup-phase-01-bugs.md) | Complete (commits a42af74, 5fd347c, 56b8028, plus this closeout) |
-| 2. Structural dedup | PLAN-audit-cleanup-phase-02-structural.md | Not started |
+| 2. Structural dedup | [PLAN-audit-cleanup-phase-02-structural.md](PLAN-audit-cleanup-phase-02-structural.md) | Complete (commits ee8ddd1, c5d84ca, 46baa27, e0734e1, 64a0297, 118c17f, plus this closeout) |
 | 3. Test coverage and release verification | PLAN-audit-cleanup-phase-03-tests.md | Not started |
 
 ### Phase 1 sketch — real bug fixes

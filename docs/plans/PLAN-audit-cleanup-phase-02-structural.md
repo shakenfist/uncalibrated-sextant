@@ -6,9 +6,66 @@ Previous phase:
 
 ## Outcome
 
-**Status: Not started.**
+**Status: Complete (commits ee8ddd1, c5d84ca, 46baa27,
+e0734e1, 64a0297, 118c17f, plus this closeout).**
 
-This section will be populated as Phase 2 lands.
+All six structural-cleanup commits landed. `make screenshot`
+verified after each step still drains 59 events — the
+refactors are byte-identical at the rendering level.
+
+### What Phase 2 actually delivered
+
+- `PACE_LINE_MS` is `pub(crate)` from `src/scene.rs`; the
+  duplicate const + sync-comment in `src/bootloader.rs` is
+  gone, and bootloader's `use crate::scene::{...};` line
+  imports the constant alongside `poll_key`, `stall`,
+  `POLL_MS`. (commit `ee8ddd1`)
+- `Renderer::blit_glyph_bytes` private helper extracts the
+  20-line `BltPixel` composition that `draw_glyph` and
+  `draw_cursor_glyph` were copy-pasting; both public callers
+  delegate, retaining their bounds-check guards. (commit
+  `c5d84ca`)
+- `bootloader::run_timeout` carries
+  `debug_assert!(TIMEOUT_COUNTDOWN_S <= 99, ...)` with the
+  inline rationale and a narrowly-scoped
+  `#[allow(clippy::assertions_on_constants)]` to suppress
+  the lint that fires because the current value is
+  trivially in range. (commit `46baa27`)
+- `Scene::try_handle_mode_key` and `Scene::cycle_modes` are
+  private (`fn`, not `pub(crate) fn`); `grep -rn` confirmed
+  no callers exist outside `src/scene.rs`. (commit
+  `e0734e1`)
+- `RepaintState` carries a lead doc-comment paragraph
+  documenting the "one variant per scene runner; carry
+  just enough state" intent; the existing Phase-1
+  implementation-detail prose is retained verbatim
+  beneath it. (commit `64a0297`)
+- `Scene::blink_until_key<F: FnOnce(&mut Self)>` extracts
+  the duplicated cursor-blink poll loop from `run_awaiting`
+  and `run_parked` into a single generic helper. Both
+  runners are now small stubs that delegate via an exit
+  closure. Generic `FnOnce` (not `Box<dyn FnOnce>`) keeps
+  the dispatch zero-allocation. The repaint-state lift in
+  `run_parked` correctly stays outside the helper, before
+  the call. (commit `118c17f`)
+
+### What Phase 2 did NOT deliver, and why
+
+- **Polling-stall pattern unification across
+  `Scene::stall_with_keys` + bootloader R/I/A loop +
+  bootloader paste-capture loop.** Master plan *Future
+  work*; the per-loop key filter (mode-key dispatch vs
+  R/I/A vs ASCII paste) makes a closure-based abstraction
+  non-trivial in `no_std`. Three sites is the threshold
+  below which copy-paste is cheaper than the abstraction;
+  if a fourth polling-stall consumer appears, revisit.
+- **Module splits for `scene.rs` (818 lines) and
+  `bootloader.rs` (709 lines).** Both files are still
+  cohesive; the audit's *Spaghetti vectors* finding noted
+  "defer until a fourth scene runner is added." That
+  threshold has not been reached.
+- **`format_u32` to a shared `src/util.rs`.** Master plan
+  *Future work*; defer until a second user appears.
 
 ## Prompt
 
@@ -389,29 +446,33 @@ content rather than duplicating.
 
 ## Exit criteria
 
-- [ ] `PACE_LINE_MS` is declared once in `src/`, in
+- [x] `PACE_LINE_MS` is declared once in `src/`, in
       `src/scene.rs` as `pub(crate)`. `bootloader.rs`
-      imports it via `use crate::scene::PACE_LINE_MS;` (or
-      the existing combined `use` line).
-- [ ] `Renderer::blit_glyph_bytes` is a private helper;
+      imports it via the existing combined `use` line.
+      *(commit `ee8ddd1`.)*
+- [x] `Renderer::blit_glyph_bytes` is a private helper;
       `draw_glyph` and `draw_cursor_glyph` are wrappers
       around the helper plus their own bounds-check
-      guards.
-- [ ] `Scene::blink_until_key` exists with the signature
+      guards. *(commit `c5d84ca`.)*
+- [x] `Scene::blink_until_key` exists with the signature
       `<F: FnOnce(&mut Self)>(&mut self, &mut Renderer,
       usize, usize, F)`. `run_awaiting` and `run_parked`
-      are two-to-three-line stubs calling the helper.
-- [ ] `bootloader::run_timeout` carries the
+      are stubs calling the helper. *(commit `118c17f`.)*
+- [x] `bootloader::run_timeout` carries the
       `debug_assert!(TIMEOUT_COUNTDOWN_S <= 99)`.
-- [ ] `Scene::try_handle_mode_key` and `Scene::cycle_modes`
-      are private (`fn`, not `pub(crate) fn`).
-- [ ] `RepaintState` carries the new doc comment.
-- [ ] `make screenshot` produces the same 59-event
+      *(commit `46baa27`.)*
+- [x] `Scene::try_handle_mode_key` and `Scene::cycle_modes`
+      are private (`fn`, not `pub(crate) fn`). *(commit
+      `e0734e1`.)*
+- [x] `RepaintState` carries the new doc comment.
+      *(commit `64a0297`.)*
+- [x] `make screenshot` produces the same 59-event
       transcript as Phase 1's closeout baseline (commit
-      `3385ca1`).
-- [ ] `pre-commit run --all-files` exits 0 at every
+      `3385ca1`). *(verified after every step and after
+      the full phase.)*
+- [x] `pre-commit run --all-files` exits 0 at every
       commit.
-- [ ] Commit messages follow project conventions.
+- [x] Commit messages follow project conventions.
 
 ## Risks
 

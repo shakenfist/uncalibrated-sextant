@@ -150,10 +150,12 @@ parked screen:
 | `0` | Cycle through every available mode, ~1 s per mode (interruptible) |
 
 After each switch a brief toast appears on the bottom row naming the
-applied resolution (e.g. `1024×768`). If the firmware does not expose
-the exact requested mode the nearest available mode is used instead and
-the toast shows the substitution form (`requested 1280×720 → using
-1024×768`). Under default OVMF + QEMU all six bindings resolve exactly
+applied resolution (e.g. `mode 1024x768`). If the firmware does not
+expose the exact requested mode the nearest available mode is used
+instead and the toast shows the substitution form (`requested 1280x720
+-> using 1024x768`). The renderer's font is ASCII-only, so the toast
+renders exactly as shown — no Unicode `×` or `→`. Under default OVMF +
+QEMU all six bindings resolve exactly
 — no substitutions are needed — but a future host or `-vga` variant
 may differ.
 

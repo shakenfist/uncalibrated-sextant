@@ -360,35 +360,14 @@ impl Scene {
 
         self.repaint_state = RepaintState::Awaiting;
 
-        loop {
-            // Advance cursor state by one poll interval.
-            let glyph = self.cursor.tick(POLL_MS);
-            Self::draw_or_clear_cursor(renderer, glyph, CURSOR_COL, CURSOR_ROW);
-            self.tick_toast(renderer, POLL_MS);
-            stall(&mut self.clock_ms, POLL_MS);
-
-            if let Some((ch, sc)) = poll_key() {
-                self.ring.push(Event::Keypress {
-                    unicode: ch,
-                    scancode: sc,
-                    timestamp_ms: self.clock_ms,
-                });
-
-                if self.try_handle_mode_key(renderer, ch) {
-                    // Mode key consumed — stay in awaiting.
-                    continue;
-                }
-
-                // Non-mode key — transition to booting.
-                self.ring.push(Event::SceneTransition {
-                    from: Phase::Awaiting,
-                    to: Phase::Booting,
-                    timestamp_ms: self.clock_ms,
-                });
-                self.phase = Phase::Booting;
-                return;
-            }
-        }
+        self.blink_until_key(renderer, CURSOR_COL, CURSOR_ROW, |scene| {
+            scene.ring.push(Event::SceneTransition {
+                from: Phase::Awaiting,
+                to: Phase::Booting,
+                timestamp_ms: scene.clock_ms,
+            });
+            scene.phase = Phase::Booting;
+        });
     }
 
     // ----------------------------------------------------------------
@@ -668,6 +647,49 @@ impl Scene {
         }
     }
 
+    /// Run a cursor-blink poll loop until a non-mode keystroke
+    /// arrives. The cursor blinks at `(cursor_col, cursor_row)`;
+    /// each tick polls keys, dispatches mode keys via
+    /// `try_handle_mode_key` (which the loop calls in a way
+    /// that respects the locked-bootloader carve-out — this
+    /// helper is not invoked from src/bootloader.rs), and ticks
+    /// the toast TTL.
+    ///
+    /// On a non-mode keystroke, pushes a `Keypress` event and
+    /// then invokes `on_exit(self)`. The closure is responsible
+    /// for any phase transition and final event pushes (e.g.
+    /// `SceneTransition`); after it returns, the helper
+    /// returns.
+    fn blink_until_key<F: FnOnce(&mut Self)>(
+        &mut self,
+        renderer: &mut Renderer,
+        cursor_col: usize,
+        cursor_row: usize,
+        on_exit: F,
+    ) {
+        loop {
+            let glyph = self.cursor.tick(POLL_MS);
+            Self::draw_or_clear_cursor(renderer, glyph, cursor_col, cursor_row);
+            self.tick_toast(renderer, POLL_MS);
+            stall(&mut self.clock_ms, POLL_MS);
+
+            if let Some((ch, sc)) = poll_key() {
+                self.ring.push(Event::Keypress {
+                    unicode: ch,
+                    scancode: sc,
+                    timestamp_ms: self.clock_ms,
+                });
+
+                if self.try_handle_mode_key(renderer, ch) {
+                    continue;
+                }
+
+                on_exit(self);
+                return;
+            }
+        }
+    }
+
     /// Walk every available GOP mode, dwelling
     /// `CYCLE_DWELL_MS` per step. Interruptible by any
     /// keypress: the cycle stops, the binary settles at the
@@ -852,33 +874,14 @@ impl Scene {
 
         // Reuse the existing cursor state to preserve blink/glitch
         // counter continuity from the AWAITING screen.
-        loop {
-            let glyph = self.cursor.tick(POLL_MS);
-            Self::draw_or_clear_cursor(renderer, glyph, cursor_col, cursor_row);
-            self.tick_toast(renderer, POLL_MS);
-            stall(&mut self.clock_ms, POLL_MS);
-
-            if let Some((ch, sc)) = poll_key() {
-                self.ring.push(Event::Keypress {
-                    unicode: ch,
-                    scancode: sc,
-                    timestamp_ms: self.clock_ms,
-                });
-
-                if self.try_handle_mode_key(renderer, ch) {
-                    // Mode key consumed — stay in parked.
-                    continue;
-                }
-
-                // Non-mode key — Parked → Parked transition signals
-                // the final keypress that exits the parking loop.
-                self.ring.push(Event::SceneTransition {
-                    from: Phase::Parked,
-                    to: Phase::Parked,
-                    timestamp_ms: self.clock_ms,
-                });
-                return;
-            }
-        }
+        self.blink_until_key(renderer, cursor_col, cursor_row, |scene| {
+            // Non-mode key — Parked → Parked transition signals
+            // the final keypress that exits the parking loop.
+            scene.ring.push(Event::SceneTransition {
+                from: Phase::Parked,
+                to: Phase::Parked,
+                timestamp_ms: scene.clock_ms,
+            });
+        });
     }
 }

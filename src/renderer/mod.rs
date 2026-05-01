@@ -175,6 +175,9 @@ impl Renderer {
     /// Unknown or out-of-range characters fall back to `'?'`.
     /// Issues exactly one `BltOp::BufferToVideo` call (principle 6).
     pub fn draw_glyph(&mut self, ch: char, col: usize, row: usize) {
+        if col >= self.screen_cols() || row >= self.screen_rows() {
+            return;
+        }
         let index = if (ch as u32) < 0x80 {
             ch as usize
         } else {
@@ -224,6 +227,9 @@ impl Renderer {
     /// Clear an entire text row, edge to edge between the horizontal
     /// margins, to background. One BltOp::VideoFill per call.
     pub fn clear_row(&mut self, row: usize) {
+        if row >= self.screen_rows() {
+            return;
+        }
         let px = MARGIN_X;
         let py = MARGIN_Y + row * CELL_H;
         let dims = (self.width.saturating_sub(2 * MARGIN_X), CELL_H);
@@ -242,6 +248,9 @@ impl Renderer {
     /// each row byte is the leftmost pixel.
     /// Issues exactly one `BltOp::BufferToVideo` call (principle 6).
     pub fn draw_cursor_glyph(&mut self, bytes: &[u8; 16], col: usize, row: usize) {
+        if col >= self.screen_cols() || row >= self.screen_rows() {
+            return;
+        }
         let mut buf = [BG; CELL_W * CELL_H];
         for (r, &byte) in bytes.iter().enumerate() {
             for c in 0..CELL_W {
@@ -266,6 +275,9 @@ impl Renderer {
     /// Used to erase the cursor during the dark half of a blink cycle.
     /// Issues one `BltOp::VideoFill` call.
     pub fn clear_cell(&mut self, col: usize, row: usize) {
+        if col >= self.screen_cols() || row >= self.screen_rows() {
+            return;
+        }
         let px = MARGIN_X + col * CELL_W;
         let py = MARGIN_Y + row * CELL_H;
         let _ = self.gop.blt(BltOp::VideoFill {

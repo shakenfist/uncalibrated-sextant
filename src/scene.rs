@@ -207,9 +207,15 @@ struct ToastState {
     remaining_ms: u64,
 }
 
-/// Snapshot of what is currently on screen, sufficient to repaint from
-/// scratch at the renderer's current dimensions. Updated by the scene
-/// runners as they play.
+/// Snapshot of what is currently on screen, sufficient for
+/// `Scene::repaint` to reconstruct the visible content
+/// after a runtime mode switch.
+///
+/// Add one variant per scene runner. Carry just enough
+/// state — script index, row, etc. — for the repainter to
+/// replay the correct prefix; resist storing data that
+/// repaint does not actually consume. Variant fields drift
+/// fastest; keep them lean.
 ///
 /// Every variant carries the indices and rows the repainter needs to
 /// replay just the right prefix of the boot scripts. Repaint never

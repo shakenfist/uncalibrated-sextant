@@ -4,9 +4,32 @@ Parent plan: [PLAN-audit-cleanup.md](PLAN-audit-cleanup.md).
 
 ## Outcome
 
-**Status: Not started.**
+**Status: Complete (commits a42af74, 5fd347c, 56b8028).**
 
-This section will be populated as Phase 1 lands.
+All three real bugs fixed in three small commits. `make
+screenshot` confirms the no-keystroke regression test still
+drains 59 events.
+
+### What Phase 1 actually delivered
+
+- Bounds-check guards on `Renderer::draw_glyph`,
+  `draw_cursor_glyph`, `clear_cell`, and `clear_row` (commit
+  `a42af74`). The sub-agent extended slightly beyond the
+  brief by also guarding `clear_row`, which was the right
+  call: it's reachable from `Scene::repaint`'s toast cleanup
+  path. `draw_text_at` gets transitive coverage via
+  `draw_glyph`. `draw_text_bitmap` is left unguarded for now
+  per the brief's scope; only callers are static chrome /
+  probe rendering at well-bounded positions.
+- README.md's toast format examples corrected to ASCII
+  (`mode 1024x768` and `requested 1280x720 -> using
+  1024x768`) with a clarifying sentence about the renderer's
+  ASCII-only font (commit `5fd347c`).
+- ARCHITECTURE.md's stale `Renderer::draw_logo` reference
+  replaced with `draw_text_bitmap` (commit `56b8028`).
+  `grep -rn draw_logo` from repo root returns zero live
+  references; only archival mentions in this plan and the
+  master plan remain.
 
 ## Prompt
 
@@ -54,19 +77,24 @@ producing three discrete commits is fine.
 
 ## Exit criteria
 
-- [ ] `Renderer::draw_glyph`, `Renderer::draw_cursor_glyph`,
-      and `Renderer::clear_cell` all have the bounds-check
-      guard.
-- [ ] `make screenshot` produces the same 59-event
-      transcript as `8255685`'s baseline (no regression in
-      the no-keystroke path).
-- [ ] `README.md`'s toast format examples are ASCII-only,
-      with `mode ` prefix on exact-match.
-- [ ] `ARCHITECTURE.md` references `draw_text_bitmap`, not
-      `draw_logo`. `grep -r draw_logo` returns no matches
-      anywhere in the repo.
-- [ ] `pre-commit run --all-files` exits 0 at every commit.
-- [ ] Commit messages follow project conventions.
+- [x] `Renderer::draw_glyph`, `Renderer::draw_cursor_glyph`,
+      `Renderer::clear_cell`, and `Renderer::clear_row` all
+      have the bounds-check guard. *(commit `a42af74`;
+      `clear_row` added beyond the brief because it's
+      reachable from toast cleanup.)*
+- [x] `make screenshot` produces the same 59-event
+      transcript as `8255685`'s baseline. *(verified after
+      each commit and after the full phase.)*
+- [x] `README.md`'s toast format examples are ASCII-only,
+      with `mode ` prefix on exact-match. *(commit
+      `5fd347c`.)*
+- [x] `ARCHITECTURE.md` references `draw_text_bitmap`, not
+      `draw_logo`. `grep -r draw_logo` returns no live
+      matches anywhere in the repo (only archival mentions
+      in this plan and the master plan). *(commit
+      `56b8028`.)*
+- [x] `pre-commit run --all-files` exits 0 at every commit.
+- [x] Commit messages follow project conventions.
 
 ## Risks
 

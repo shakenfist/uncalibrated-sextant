@@ -52,7 +52,7 @@ or `draw_line` and pausing 200 ms between lines. The parking screen
 appends its SYSTEM ONLINE prompt below the boot transcript; the
 screen is not cleared between Booting and Parked, keeping the full
 boot log visible. `Scene::draw_chrome` places the Shaken Fist logo in
-the top-right corner by calling `Renderer::draw_logo`; the logo is
+the top-right corner by calling `Renderer::draw_text_bitmap`; the logo is
 re-painted after every `renderer.clear()` call.
 
 `CursorState` in `src/cursor.rs` implements a 1 Hz blink (500 ms on,

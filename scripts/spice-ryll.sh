@@ -115,9 +115,15 @@ echo "SPICE port open; launching ryll ($RYLL)."
 echo "Paste-as-keystrokes is enabled; trigger via Ctrl+Alt+V or"
 echo "Menu -> Paste in the ryll GUI (NOT Ctrl+Shift+V)."
 echo "To exit: press Ctrl-C in this terminal (not the ryll window)."
+# --pedantic auto-writes a bug-report zip into
+# ./ryll-pedantic-reports/ the first time each distinct
+# protocol gap is seen. Capped at 50 zips per session.
+# Cheap insurance for a test guest — gaps fired during a
+# UC run are exactly what we want to triage later.
 "$RYLL" \
     --direct "127.0.0.1:${SPICE_PORT}" \
-    --enable-paste-as-keystrokes &
+    --enable-paste-as-keystrokes \
+    --pedantic &
 ryll_pid=$!
 
 # Foreground on QEMU; the session ends when QEMU exits or Ctrl-C fires.

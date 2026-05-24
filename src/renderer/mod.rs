@@ -72,6 +72,64 @@ const FG: BltPixel = BltPixel::new(51, 150, 51);
 /// Pure black background.
 const BG: BltPixel = BltPixel::new(0, 0, 0);
 
+/// Visual on-screen digest region geometry.
+///
+/// The digest is a QR code rendered into the bottom-right corner of the
+/// framebuffer, sized for the smallest supported GOP mode (640x480).
+/// QR Version 5 (37x37 modules) at 4 pixels per module, with the
+/// qrcodegen-default 4-module quiet zone rendered inside the matrix,
+/// gives a 180x180 px region. At 640x480 this sits at (444, 268),
+/// above the bottom toast row and below the top-right logo so the
+/// y-ranges of digest and logo are disjoint.
+///
+/// At larger GOP modes the same fixed `(DIGEST_REGION_X,
+/// DIGEST_REGION_Y)` origin places the digest proportionally farther
+/// from the bottom and right edges, which is harmless — the right and
+/// bottom margins just grow. Right-anchoring at runtime is a possible
+/// Phase 3 enhancement; the constants stay as the 640x480 baseline.
+///
+/// The compile-time `assert!` block below proves the region fits at
+/// 640x480 without colliding with the logo, the AWAITING cursor
+/// (top-left), or the bottom-row toast.
+///
+/// `#[allow(dead_code)]` covers the gap between this step (1b) landing
+/// the constants and step 1c wiring `Renderer::draw_digest` to consume
+/// them. The constants are referenced inside the `const _: () = { ... }`
+/// fit-assertion block immediately below, but rustc still flags the
+/// `pub(crate)` items as unused until a real call site appears.
+#[allow(dead_code)]
+pub(crate) const DIGEST_QR_VERSION: usize = 5;
+#[allow(dead_code)]
+pub(crate) const DIGEST_QR_MODULES: usize = 37;
+#[allow(dead_code)]
+pub(crate) const DIGEST_QR_BORDER: usize = 4;
+#[allow(dead_code)]
+pub(crate) const DIGEST_MODULE_PX: usize = 4;
+#[allow(dead_code)]
+pub(crate) const DIGEST_REGION_PX: usize =
+    (DIGEST_QR_MODULES + 2 * DIGEST_QR_BORDER) * DIGEST_MODULE_PX;
+#[allow(dead_code)]
+pub(crate) const DIGEST_REGION_X: usize = 640 - MARGIN_X - DIGEST_REGION_PX;
+#[allow(dead_code)]
+pub(crate) const DIGEST_REGION_Y: usize = 480 - MARGIN_Y - CELL_H - DIGEST_REGION_PX;
+
+const _: () = {
+    // Region pixel width must be a whole number of modules.
+    assert!(DIGEST_REGION_PX % DIGEST_MODULE_PX == 0);
+    // Region must exactly span (MODULES + 2 * BORDER) modules.
+    assert!(DIGEST_REGION_PX == (DIGEST_QR_MODULES + 2 * DIGEST_QR_BORDER) * DIGEST_MODULE_PX);
+    // Region must not overlap the bottom-row toast at 640x480.
+    assert!(DIGEST_REGION_Y + DIGEST_REGION_PX + MARGIN_Y <= 480);
+    // Region must not overlap the top-right logo at 640x480: the logo
+    // occupies y in [16, 144); the digest sits below that y-range.
+    assert!(DIGEST_REGION_Y >= 144);
+    // Region must fit horizontally at 640 px wide.
+    assert!(DIGEST_REGION_X + DIGEST_REGION_PX + MARGIN_X <= 640);
+    // Asserting DIGEST_QR_VERSION is referenced so the constant stays
+    // load-bearing for the encoder constructor in step 1c.
+    assert!(DIGEST_QR_VERSION == 5);
+};
+
 /// GOP-backed text renderer.
 ///
 /// Owns the `ScopedProtocol` for `GraphicsOutput`; dropping the

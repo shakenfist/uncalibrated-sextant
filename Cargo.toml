@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 uefi = { version = "=0.37.0", features = ["panic_handler", "alloc", "global_allocator"] }
+qrcodegen = { version = "1", default-features = false }
 
 [profile.release]
 panic = "abort"

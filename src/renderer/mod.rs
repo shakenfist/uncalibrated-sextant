@@ -13,6 +13,7 @@ extern crate alloc;
 mod font;
 
 use alloc::vec::Vec;
+use qrcodegen_no_heap::{QrCode, QrCodeEcc, Version};
 use uefi::boot::ScopedProtocol;
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 
@@ -92,26 +93,24 @@ const BG: BltPixel = BltPixel::new(0, 0, 0);
 /// 640x480 without colliding with the logo, the AWAITING cursor
 /// (top-left), or the bottom-row toast.
 ///
-/// `#[allow(dead_code)]` covers the gap between this step (1b) landing
-/// the constants and step 1c wiring `Renderer::draw_digest` to consume
-/// them. The constants are referenced inside the `const _: () = { ... }`
-/// fit-assertion block immediately below, but rustc still flags the
-/// `pub(crate)` items as unused until a real call site appears.
-#[allow(dead_code)]
+/// `Renderer::draw_digest` consumes these constants directly; the
+/// fit-assertion block below pins their relationships at compile time.
 pub(crate) const DIGEST_QR_VERSION: usize = 5;
-#[allow(dead_code)]
 pub(crate) const DIGEST_QR_MODULES: usize = 37;
-#[allow(dead_code)]
 pub(crate) const DIGEST_QR_BORDER: usize = 4;
-#[allow(dead_code)]
 pub(crate) const DIGEST_MODULE_PX: usize = 4;
-#[allow(dead_code)]
 pub(crate) const DIGEST_REGION_PX: usize =
     (DIGEST_QR_MODULES + 2 * DIGEST_QR_BORDER) * DIGEST_MODULE_PX;
-#[allow(dead_code)]
 pub(crate) const DIGEST_REGION_X: usize = 640 - MARGIN_X - DIGEST_REGION_PX;
-#[allow(dead_code)]
 pub(crate) const DIGEST_REGION_Y: usize = 480 - MARGIN_Y - CELL_H - DIGEST_REGION_PX;
+
+/// Version 5 pinned for `qrcodegen-no-heap`. Kept `const` so the
+/// buffer sizing below resolves at compile time.
+const DIGEST_QR_VERSION_V: Version = Version::new(DIGEST_QR_VERSION as u8);
+
+/// Buffer length required by `qrcodegen-no-heap` for Version 5 codewords
+/// plus the in-place mask/temp work area.
+const DIGEST_QR_BUFFER_LEN: usize = DIGEST_QR_VERSION_V.buffer_len();
 
 const _: () = {
     // Region pixel width must be a whole number of modules.
@@ -431,6 +430,81 @@ impl Renderer {
 
         let status_col = DOT_LEADER_COL + 1;
         self.draw_text_bitmap(status_bitmap, status_width_px, CELL_H, status_col, row);
+    }
+
+    /// Encode `payload` as a QR code and render it into the digest
+    /// region in the bottom-right of the framebuffer.
+    ///
+    /// Issues one `BltOp::BufferToVideo` call per QR module (Principle 6
+    /// — the repeated 4x4 tile size lets the SPICE server's GLZ
+    /// dictionary match aggressively). At `DIGEST_MODULE_PX = 4`, each
+    /// module is a 4x4 buffer of either `FG` or `BG`. The full grid is
+    /// `(DIGEST_QR_MODULES + 2 * DIGEST_QR_BORDER) = 45` modules square,
+    /// yielding 2025 BltOp calls per invocation.
+    ///
+    /// The encoder is pinned to Version 5 and ECC level Medium. Version
+    /// 5 / Medium holds 84 bytes of byte-mode payload, ample for the
+    /// planned ring-buffer digests. Medium tolerates ~15% of modules
+    /// being unreadable, which leaves headroom for the future
+    /// CRT-scruff overlay without sacrificing capacity unnecessarily.
+    ///
+    /// Oversized payloads panic — `draw_digest` is a debug / smoke
+    /// instrument and silent truncation would corrupt the decoded data
+    /// without warning. Callers must size payloads to the Version 5 /
+    /// Medium capacity.
+    ///
+    /// `#[allow(dead_code)]` is the transitive root suppression for
+    /// the `DIGEST_*` constants this method consumes — they become
+    /// reachable as soon as step 1d adds the feature-gated call site
+    /// in `run_awaiting`. The suppression lives only here; the
+    /// constants themselves carry no allow attribute.
+    #[allow(dead_code)]
+    pub(crate) fn draw_digest(&mut self, payload: &[u8]) {
+        // qrcodegen-no-heap's encode_binary expects the payload to sit
+        // at the front of `dataandtempbuffer`, with the rest reserved
+        // for scratch. Copy the caller's slice in, then encode.
+        let mut data_and_temp = [0u8; DIGEST_QR_BUFFER_LEN];
+        let mut out_buf = [0u8; DIGEST_QR_BUFFER_LEN];
+        assert!(
+            payload.len() <= data_and_temp.len(),
+            "digest payload exceeds Version 5 / Medium buffer",
+        );
+        data_and_temp[..payload.len()].copy_from_slice(payload);
+
+        let qr = QrCode::encode_binary(
+            &mut data_and_temp,
+            payload.len(),
+            &mut out_buf,
+            QrCodeEcc::Medium,
+            DIGEST_QR_VERSION_V, // min version: pinned to 5
+            DIGEST_QR_VERSION_V, // max version: pinned to 5
+            None,                // mask: auto
+            false,               // boost_ecl: keep ECC at exactly Medium
+        )
+        .expect("digest payload exceeds Version 5 / Medium capacity");
+
+        const SIZE: usize = DIGEST_QR_MODULES;
+        const BORDER: usize = DIGEST_QR_BORDER;
+        const M: usize = DIGEST_MODULE_PX;
+        let grid: usize = SIZE + 2 * BORDER;
+
+        let mut tile = [BG; M * M];
+        for grid_y in 0..grid {
+            let mod_y = grid_y as i32 - BORDER as i32;
+            for grid_x in 0..grid {
+                let mod_x = grid_x as i32 - BORDER as i32;
+                let colour = if qr.get_module(mod_x, mod_y) { FG } else { BG };
+                tile.fill(colour);
+                let dest_x = DIGEST_REGION_X + grid_x * M;
+                let dest_y = DIGEST_REGION_Y + grid_y * M;
+                let _ = self.gop.blt(BltOp::BufferToVideo {
+                    buffer: &tile,
+                    src: BltRegion::Full,
+                    dest: (dest_x, dest_y),
+                    dims: (M, M),
+                });
+            }
+        }
     }
 
     /// Render a telemetry line: `LABEL .......... STATUS`.

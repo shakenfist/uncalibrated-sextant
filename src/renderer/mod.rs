@@ -83,11 +83,15 @@ const BG: BltPixel = BltPixel::new(0, 0, 0);
 /// above the bottom toast row and below the top-right logo so the
 /// y-ranges of digest and logo are disjoint.
 ///
-/// At larger GOP modes the same fixed `(DIGEST_REGION_X,
-/// DIGEST_REGION_Y)` origin places the digest proportionally farther
-/// from the bottom and right edges, which is harmless — the right and
-/// bottom margins just grow. Right-anchoring at runtime is a possible
-/// Phase 3 enhancement; the constants stay as the 640x480 baseline.
+/// `DIGEST_REGION_X` and `DIGEST_REGION_Y` are the 640x480 baseline
+/// only — they exist so the compile-time `assert!` block below can
+/// prove the region fits without colliding with the logo, AWAITING
+/// cursor, or toast row at the smallest supported mode. At runtime
+/// `draw_digest` right-anchors the region using the actual
+/// `(self.width, self.height)`, so on larger modes (the default
+/// 1024x768, the 1920x1080 cycle, etc.) the digest stays glued to
+/// the bottom-right corner rather than floating at fixed pixel
+/// coordinates in the middle of the screen.
 ///
 /// The compile-time `assert!` block below proves the region fits at
 /// 640x480 without colliding with the logo, the AWAITING cursor
@@ -101,7 +105,14 @@ pub(crate) const DIGEST_QR_BORDER: usize = 4;
 pub(crate) const DIGEST_MODULE_PX: usize = 4;
 pub(crate) const DIGEST_REGION_PX: usize =
     (DIGEST_QR_MODULES + 2 * DIGEST_QR_BORDER) * DIGEST_MODULE_PX;
+// Load-bearing for the compile-time `assert!` block below — those
+// uses do not count against the dead-code lint for `pub(crate)`
+// consts, but the constants document the 640x480 baseline geometry
+// the assertions enforce. `draw_digest` derives its actual origin
+// from `self.width` / `self.height` at runtime instead.
+#[allow(dead_code)]
 pub(crate) const DIGEST_REGION_X: usize = 640 - MARGIN_X - DIGEST_REGION_PX;
+#[allow(dead_code)]
 pub(crate) const DIGEST_REGION_Y: usize = 480 - MARGIN_Y - CELL_H - DIGEST_REGION_PX;
 
 /// Version 5 pinned for `qrcodegen-no-heap`. Kept `const` so the
@@ -490,6 +501,15 @@ impl Renderer {
         const M: usize = DIGEST_MODULE_PX;
         let grid: usize = SIZE + 2 * BORDER;
 
+        // Right-anchor at runtime: at 640x480 this matches the
+        // DIGEST_REGION_X / DIGEST_REGION_Y constants exactly; at
+        // larger modes the digest tracks the bottom-right corner
+        // instead of floating at fixed pixel coordinates.
+        let origin_x = self.width.saturating_sub(MARGIN_X + DIGEST_REGION_PX);
+        let origin_y = self
+            .height
+            .saturating_sub(MARGIN_Y + CELL_H + DIGEST_REGION_PX);
+
         let mut tile = [BG; M * M];
         for grid_y in 0..grid {
             let mod_y = grid_y as i32 - BORDER as i32;
@@ -497,8 +517,8 @@ impl Renderer {
                 let mod_x = grid_x as i32 - BORDER as i32;
                 let colour = if qr.get_module(mod_x, mod_y) { FG } else { BG };
                 tile.fill(colour);
-                let dest_x = DIGEST_REGION_X + grid_x * M;
-                let dest_y = DIGEST_REGION_Y + grid_y * M;
+                let dest_x = origin_x + grid_x * M;
+                let dest_y = origin_y + grid_y * M;
                 let _ = self.gop.blt(BltOp::BufferToVideo {
                     buffer: &tile,
                     src: BltRegion::Full,

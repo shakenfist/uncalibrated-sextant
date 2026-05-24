@@ -1,4 +1,4 @@
-.PHONY: build clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes
+.PHONY: build clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes digest-smoke
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -33,6 +33,24 @@ screenshot: build
 screenshot-modes: build
 	./scripts/mkesp.sh
 	./scripts/screenshot-modes.sh
+
+# Headless QR round-trip smoke. Rebuilds with the digest-smoke cargo
+# feature (which injects a hard-coded draw_digest(b"hello") into
+# run_awaiting), boots QEMU headless, screendumps to PNG, and uses
+# zbarimg to decode + assert the payload. Requires `zbar-tools`
+# (apt install zbar-tools) on the host. Invokes cargo inside the
+# build container directly because scripts/build.sh does not yet
+# accept a --features pass-through; the production build path stays
+# on the wrapper.
+digest-smoke:
+	docker build -t uncalibrated-sextant-build:1.88.0 .
+	docker run --rm \
+	    -v "$(CURDIR)":/work \
+	    -v uncalibrated-sextant-target:/work/target \
+	    -w /work \
+	    uncalibrated-sextant-build:1.88.0 \
+	    cargo build --release --features digest-smoke
+	./scripts/digest-smoke.sh
 
 vendor-probes:
 	./scripts/vendor-language-probes.py > src/probes.rs

@@ -360,6 +360,13 @@ impl Scene {
 
         self.repaint_state = RepaintState::Awaiting;
 
+        // Inject a hard-coded QR digest under the digest-smoke feature
+        // so the `make digest-smoke` headless smoke target has
+        // something to screendump and decode. Off by default; this is
+        // the *only* call site of `draw_digest` in the binary.
+        #[cfg(feature = "digest-smoke")]
+        renderer.draw_digest(b"hello");
+
         self.blink_until_key(renderer, CURSOR_COL, CURSOR_ROW, |scene| {
             scene.ring.push(Event::SceneTransition {
                 from: Phase::Awaiting,

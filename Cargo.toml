@@ -10,6 +10,14 @@ publish = false
 uefi = { version = "=0.37.0", features = ["panic_handler", "alloc", "global_allocator"] }
 qrcodegen-no-heap = "1.8.1"
 
+[features]
+default = []
+# Inject a hard-coded `draw_digest(b"hello")` call into
+# `Scene::run_awaiting`, so the `make digest-smoke` target can boot
+# headless, screendump the AWAITING frame, and decode the QR with
+# zbarimg. Off by default; no production behaviour change.
+digest-smoke = []
+
 [profile.release]
 panic = "abort"
 lto = true

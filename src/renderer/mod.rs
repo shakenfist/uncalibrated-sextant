@@ -453,12 +453,14 @@ impl Renderer {
     /// without warning. Callers must size payloads to the Version 5 /
     /// Medium capacity.
     ///
-    /// `#[allow(dead_code)]` is the transitive root suppression for
-    /// the `DIGEST_*` constants this method consumes — they become
-    /// reachable as soon as step 1d adds the feature-gated call site
-    /// in `run_awaiting`. The suppression lives only here; the
+    /// `#[cfg_attr(not(feature = "digest-smoke"), allow(dead_code))]`
+    /// is the transitive root suppression for the `DIGEST_*` constants
+    /// this method consumes. The `digest-smoke` cargo feature provides
+    /// the (sole) call site in `Scene::run_awaiting`; when that feature
+    /// is on, the method and its constants are reachable and the
+    /// suppression self-cleans. The suppression lives only here; the
     /// constants themselves carry no allow attribute.
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "digest-smoke"), allow(dead_code))]
     pub(crate) fn draw_digest(&mut self, payload: &[u8]) {
         // qrcodegen-no-heap's encode_binary expects the payload to sit
         // at the front of `dataandtempbuffer`, with the rest reserved

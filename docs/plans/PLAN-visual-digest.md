@@ -235,7 +235,7 @@ letting them drift.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Region + QR encoder | [PLAN-visual-digest-phase-01-region.md](PLAN-visual-digest-phase-01-region.md) | Not started |
+| 1. Region + QR encoder | [PLAN-visual-digest-phase-01-region.md](PLAN-visual-digest-phase-01-region.md) | Code complete (commits 55844a5 through 2611f43); manual cross-mode check pending |
 | 2. Ring-buffer payload + framebuffer hash | [PLAN-visual-digest-phase-02-payload.md](PLAN-visual-digest-phase-02-payload.md) | Not started |
 | 3. Repaint integration, format spec, closeout | [PLAN-visual-digest-phase-03-closeout.md](PLAN-visual-digest-phase-03-closeout.md) | Not started |
 

@@ -5,7 +5,105 @@ Parent plan:
 
 ## Outcome
 
-**Status: Not started.**
+**Status: Code complete (commits 55844a5, e5b319e, a3680ed,
+8d667c1, 7d06ad8, 2611f43, plus this closeout). Manual
+cross-mode visual check under `make spice-ryll` pending
+operator confirmation.**
+
+### What Phase 1 actually delivered
+
+- `qrcodegen-no-heap = "1.8.1"` dependency: no_std, zero
+  transitive deps, caller-owned `[u8; Version::buffer_len()]`
+  buffers, no allocator interaction. (commits `55844a5`
+  bootstrapped with `qrcodegen` which turned out to be
+  std-only; `a3680ed` swapped to the heap-free sibling.)
+- `DIGEST_*` constants in `src/renderer/mod.rs` with five
+  compile-time `assert!`s that pin the geometry at 640×480
+  and prove disjointness from the logo and toast row.
+  Resolved values: `DIGEST_REGION_X = 444`,
+  `DIGEST_REGION_Y = 268`, `DIGEST_REGION_PX = 180`,
+  `DIGEST_QR_VERSION = 5`, `DIGEST_MODULE_PX = 4`,
+  `DIGEST_QR_BORDER = 4`. (commit `e5b319e`.)
+- `Renderer::draw_digest(&mut self, payload: &[u8])`:
+  pins to Version 5 / ECC Medium via
+  `QrCode::encode_binary(..., min=V5, max=V5, mask=None,
+  boost_ecl=false, ...)`, then renders 45×45 = 2025 modules
+  with one `BltOp::BufferToVideo` per module
+  (Principle 6). Panics on oversized payloads.
+  (commit `8d667c1`.)
+- `digest-smoke` cargo feature gates a single
+  `draw_digest(b"hello")` call inserted into `run_awaiting`
+  after `draw_chrome` and before the blink loop. No-feature
+  builds are byte-identical to pre-Phase-1 modulo build
+  metadata. (commit `7d06ad8`.)
+- `make digest-smoke` target: builds with the feature,
+  launches headless QEMU (q35 + KVM, 4M OVMF split, QMP
+  socket — all mirroring `scripts/screenshot.sh`'s
+  conventions), waits for the AWAITING chrome to paint,
+  `screendump`s to `dist/digest-smoke.png`, inverts the PNG,
+  decodes with `zbarimg`, asserts the round-tripped
+  payload equals `hello`. Final line on success:
+  `digest-smoke: ok (hello)`. (commit `2611f43`.)
+
+### What Phase 1 did NOT deliver, and why
+
+- **Automated cross-mode QR survival check.** Deferred per
+  this plan's *Scope → Deferred from the master plan*
+  section: without Phase 3's repaint integration, mode
+  switches wipe the framebuffer (UEFI 2.10 §12.9) and
+  nothing redraws the digest. The cross-mode check is
+  manual under `make spice-ryll` in this phase, and becomes
+  an automated regression in Phase 3.
+- **`#[allow(dead_code)]` cleanup on `draw_digest`.** A
+  precise `#[cfg_attr(not(feature = "digest-smoke"),
+  allow(dead_code))]` was added in commit `7d06ad8` to
+  cleanly suppress the clippy warning only when the
+  feature is off. When Phase 2 wires a real refresh path
+  in `Scene::run_*`, this cfg_attr can be removed.
+
+### Surprises and findings
+
+- **qrcodegen vs qrcodegen-no-heap.** qrcodegen 1.8.0 ships
+  as a single crate name but Project Nayuki maintains both
+  a `std`-flavoured version (the unmodified `qrcodegen`
+  crate, which hard-codes `use std::*` and has no
+  `[features]` block — `default-features = false` is a
+  no-op) and an explicit no-heap sibling published as
+  `qrcodegen-no-heap`. The master plan's open question
+  defaulted to the wrong crate name; commit `a3680ed`
+  documents the swap. **For future plans:** when defaulting
+  to a "no_std" crate, verify the actual `Cargo.toml`
+  features rather than the README claim.
+- **Foreground/background palette inversion.** `draw_digest`
+  paints modules `FG` (phosphor green) on `BG` (black),
+  matching the harness aesthetic. `zbarimg` expects
+  conventional dark-on-light QR codes and exits 4 ("no
+  symbols found") on the as-captured PNG. Fix: the smoke
+  driver inverts the PNG via PIL before decoding, keeping
+  the on-guest aesthetic unchanged and treating the colour
+  mapping as a decoder concern. **For Phase 2:** ryll's
+  decoder will need the same convention — either invert at
+  the decoder, or invert the QR-module colour mapping
+  inside `draw_digest`. Worth a sentence in the format
+  spec produced in Phase 3.
+- **No-feature build byte-identity.** Sha256 of the
+  no-feature `.efi` binary is unchanged before and after
+  the Phase 1 commits (48640 bytes; QR path is excluded
+  entirely by the dead-code elimination when the feature
+  is off). The feature-on binary grows to 59392 bytes
+  (about 10 KB for qrcodegen-no-heap + draw_digest).
+
+### Operator action remaining for Phase 1 closeout
+
+- **Manual cross-mode visual check** under
+  `make spice-ryll` (with the `digest-smoke` feature built
+  in) — press `'1'`, `'3'`, `'5'` and confirm the QR is
+  visible at the starting mode and that mode switches wipe
+  it as expected (no Phase-1 redraw path). The
+  `make digest-smoke` target verifies the initial-mode
+  case headlessly; the SPICE manual check confirms the
+  geometry is correct at non-640×480 resolutions before
+  Phase 2 hooks in the refresh.
 
 ## Prompt
 

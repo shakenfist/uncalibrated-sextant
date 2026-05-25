@@ -278,6 +278,14 @@ pub struct Scene {
     repaint_state: RepaintState,
     /// Active on-screen toast state; `None` when no toast is visible.
     toast: Option<ToastState>,
+    /// Monotonic per-boot counter for the on-screen visual digest.
+    /// Starts at `0`; the first `refresh_digest` call increments to `1`.
+    /// Wraps at `u32::MAX` (136 years at 1 Hz — not a concern). Phase 3
+    /// will make the refresh path unconditional; phase 2 still gates the
+    /// only consumer of this field behind `cfg(feature = "digest-smoke")`,
+    /// so the field carries an attribute to match.
+    #[cfg(feature = "digest-smoke")]
+    digest_frame_counter: u32,
 }
 
 impl Scene {
@@ -290,6 +298,8 @@ impl Scene {
             clock_ms: 0,
             repaint_state: RepaintState::Chrome,
             toast: None,
+            #[cfg(feature = "digest-smoke")]
+            digest_frame_counter: 0,
         }
     }
 
@@ -299,8 +309,16 @@ impl Scene {
     pub fn run(&mut self, renderer: &mut Renderer) -> ! {
         Self::draw_chrome(renderer);
         self.run_awaiting(renderer);
+        #[cfg(feature = "digest-smoke")]
+        self.refresh_digest(renderer);
+
         let next_row = self.run_booting(renderer);
+        #[cfg(feature = "digest-smoke")]
+        self.refresh_digest(renderer);
+
         self.run_parked(renderer, next_row);
+        #[cfg(feature = "digest-smoke")]
+        self.refresh_digest(renderer);
 
         serial::drain(&self.ring);
 
@@ -360,12 +378,19 @@ impl Scene {
 
         self.repaint_state = RepaintState::Awaiting;
 
-        // Inject a hard-coded QR digest under the digest-smoke feature
-        // so the `make digest-smoke` headless smoke target has
-        // something to screendump and decode. Off by default; this is
-        // the *only* call site of `draw_digest` in the binary.
+        // One-shot digest refresh under the digest-smoke feature so the
+        // `make digest-smoke` headless smoke (which holds in AWAITING and
+        // never advances the scene) has a real TLV-encoded QR to
+        // screendump and decode. Parallel to the three outer-loop
+        // `refresh_digest` call sites in `Scene::run` — those fire at
+        // phase boundaries after the runners return, but this smoke
+        // never reaches them because `blink_until_key` below blocks
+        // until the operator presses space. Phase 3 makes the digest
+        // refresh unconditional and this one-shot can fold into the
+        // outer-loop path; for now it preserves the fast-and-
+        // deterministic shape of the AWAITING-only smoke.
         #[cfg(feature = "digest-smoke")]
-        renderer.draw_digest(b"hello");
+        self.refresh_digest(renderer);
 
         self.blink_until_key(renderer, CURSOR_COL, CURSOR_ROW, |scene| {
             scene.ring.push(Event::SceneTransition {
@@ -612,6 +637,49 @@ impl Scene {
                     post_played,
                 );
                 renderer.draw_line(SYSTEM_ONLINE_TEXT, system_online_row);
+            }
+        }
+    }
+
+    /// Compute and render the on-screen digest reflecting the
+    /// current ring-buffer state. Called at scene-phase boundaries
+    /// from the outer scene loop (`Scene::run`).
+    ///
+    /// **Carve-out:** must not be called from inside `bootloader::run`
+    /// or its sub-state-machines — the bootloader scene owns its own
+    /// framebuffer-paint pacing, and a digest refresh mid-paste-prompt
+    /// could mask paste-correctness bugs. The `assert!` below crashes
+    /// loud on accidental re-entry; one `match` per refresh is
+    /// negligible cost against the encode + draw work.
+    ///
+    /// Step 2c of the phase-2 plan will replace the `framebuffer_hash`
+    /// placeholder with a real CRC32C of the framebuffer's non-digest
+    /// pixels.
+    #[cfg(feature = "digest-smoke")]
+    fn refresh_digest(&mut self, renderer: &mut Renderer) {
+        assert!(
+            !matches!(self.repaint_state, RepaintState::BootingBootloader { .. }),
+            "refresh_digest called during bootloader scene — carve-out violated",
+        );
+        self.digest_frame_counter = self.digest_frame_counter.wrapping_add(1);
+
+        // Placeholder. Step 2c provides the real CRC32C of the
+        // framebuffer's non-digest region.
+        let framebuffer_hash: u32 = 0;
+
+        let mut buf = [0u8; crate::digest::DIGEST_PAYLOAD_CAPACITY];
+        match crate::digest::encode(
+            &self.ring,
+            self.digest_frame_counter,
+            framebuffer_hash,
+            &mut buf,
+        ) {
+            Ok(len) => renderer.draw_digest(&buf[..len]),
+            Err(_) => {
+                // Encoder errors are programmer bugs at this point —
+                // the buffer is sized exactly to capacity. Skip refresh
+                // rather than crash; phase-3 closeout will surface this
+                // via a log.
             }
         }
     }

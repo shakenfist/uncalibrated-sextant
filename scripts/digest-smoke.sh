@@ -4,7 +4,18 @@
 # Boots the `--features digest-smoke` binary, holds in AWAITING (does
 # NOT send the space keystroke that advances to the boot script),
 # screendumps the framebuffer to PNG via QMP, decodes the QR with
-# zbarimg, and asserts the payload round-trips as "hello".
+# zbarimg, and asserts the payload is a well-formed TLV digest
+# (magic == "SXDG", schema version == 1, frame counter parseable as
+# u32 LE).
+#
+# Phase 2b note: prior to step 2b the AWAITING screen carried a
+# hard-coded `b"hello"` payload (Phase 1 smoke). Step 2b removed
+# that injection and replaced it with a one-shot `refresh_digest`
+# call in `run_awaiting` that exercises the real TLV encode path
+# from `src/digest.rs`. The smoke now asserts the TLV header rather
+# than the literal string; record-count is logged but not asserted
+# (the AWAITING ring buffer is empty before any keystroke, so the
+# expected count is zero — checked via the header summary).
 #
 # Verifies the end-to-end pipeline from `Renderer::draw_digest` through
 # the GOP framebuffer to an off-target decoder. Production builds
@@ -177,15 +188,60 @@ src, dst = sys.argv[1], sys.argv[2]
 ImageOps.invert(Image.open(src).convert('RGB')).save(dst)
 PY
 
-# Decode and assert. zbarimg --raw prints just the payload bytes (no
-# "QR-Code:" prefix), and -q suppresses the summary line. We trim a
-# trailing newline so a payload of exactly "hello" matches.
-decoded=$(zbarimg --raw -q "$INVERTED_PNG" | tr -d '\n')
-expected=hello
-if [ "$decoded" != "$expected" ]; then
-    printf 'digest-smoke: decode mismatch: got %q, expected %q\n' \
-        "$decoded" "$expected" >&2
-    exit 1
-fi
+# Decode and assert. zbarimg --raw prints the payload bytes followed
+# by a trailing newline. The TLV payload is binary (not text), so a
+# bash $(...) capture would mangle embedded NULs; shell out to python
+# instead, where the raw stdout bytes survive intact.
+INVERTED_PNG="$INVERTED_PNG" python3 - <<'PY'
+import os
+import struct
+import subprocess
+import sys
 
-echo "digest-smoke: ok ($decoded)"
+inverted = os.environ['INVERTED_PNG']
+proc = subprocess.run(
+    ['zbarimg', '--raw', '-q', inverted],
+    capture_output=True,
+    check=False,
+)
+if proc.returncode != 0:
+    sys.stderr.write(
+        'digest-smoke: zbarimg failed (rc=%d): %s\n'
+        % (proc.returncode, proc.stderr.decode('utf-8', 'replace'))
+    )
+    sys.exit(1)
+
+# zbarimg appends one trailing newline after the decoded payload.
+payload = proc.stdout
+if payload.endswith(b'\n'):
+    payload = payload[:-1]
+
+if len(payload) < 10:
+    sys.stderr.write(
+        'digest-smoke: payload shorter than 10-byte header (got %d bytes)\n'
+        % len(payload)
+    )
+    sys.exit(1)
+
+magic = payload[0:4]
+if magic != b'SXDG':
+    sys.stderr.write(
+        'digest-smoke: magic mismatch: got %r, expected b"SXDG"\n' % magic
+    )
+    sys.exit(1)
+
+version = payload[4]
+if version != 1:
+    sys.stderr.write(
+        'digest-smoke: schema version mismatch: got %d, expected 1\n' % version
+    )
+    sys.exit(1)
+
+frame = struct.unpack('<I', payload[5:9])[0]
+records = payload[9]
+
+print(
+    'digest-smoke: ok (magic=SXDG version=1 frame=%d records=%d)'
+    % (frame, records)
+)
+PY

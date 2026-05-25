@@ -240,8 +240,23 @@ if version != 1:
 frame = struct.unpack('<I', payload[5:9])[0]
 records = payload[9]
 
+# Trailing 4 bytes are the framebuffer CRC32C (path A: read-back via
+# BltOp::VideoToBltBuffer, hashed over every pixel outside the digest
+# region). Phase 2c-impl: was 0x00000000 placeholder before this
+# step; now reflects the AWAITING screen content and should be both
+# non-zero and deterministic across consecutive runs at the same
+# mode. Surfacing it in the success line lets the operator eyeball
+# both properties without re-parsing the PNG.
+if len(payload) < 14:
+    sys.stderr.write(
+        'digest-smoke: payload shorter than header+trailer (got %d bytes)\n'
+        % len(payload)
+    )
+    sys.exit(1)
+crc = struct.unpack('<I', payload[-4:])[0]
+
 print(
-    'digest-smoke: ok (magic=SXDG version=1 frame=%d records=%d)'
-    % (frame, records)
+    'digest-smoke: ok (magic=SXDG version=1 frame=%d records=%d crc32c=0x%08x)'
+    % (frame, records, crc)
 )
 PY

@@ -652,9 +652,16 @@ impl Scene {
     /// loud on accidental re-entry; one `match` per refresh is
     /// negligible cost against the encode + draw work.
     ///
-    /// Step 2c of the phase-2 plan will replace the `framebuffer_hash`
-    /// placeholder with a real CRC32C of the framebuffer's non-digest
-    /// pixels.
+    /// Hash path A: reads the framebuffer back via
+    /// `BltOp::VideoToBltBuffer` and CRC32Cs the bytes outside the
+    /// right-anchored digest region. Picked over path B (per-paint
+    /// incremental hash) by 2c-measure: path A concentrates ~21.5M
+    /// cycles per call (~7 ms at 3 GHz) into the three scene-phase
+    /// boundaries instead of leaking hash overhead into every paint
+    /// site forever, and it implicitly exercises the SPICE display's
+    /// read-back path which the project otherwise never touches. See
+    /// `PLAN-visual-digest-phase-02-payload.md` *Outcome* for the full
+    /// A/B numbers and rationale.
     #[cfg(feature = "digest-smoke")]
     fn refresh_digest(&mut self, renderer: &mut Renderer) {
         assert!(
@@ -663,9 +670,12 @@ impl Scene {
         );
         self.digest_frame_counter = self.digest_frame_counter.wrapping_add(1);
 
-        // Placeholder. Step 2c provides the real CRC32C of the
-        // framebuffer's non-digest region.
-        let framebuffer_hash: u32 = 0;
+        // Path A: read the framebuffer back via
+        // `BltOp::VideoToBltBuffer` and CRC32C every pixel byte
+        // outside the digest region. Excluding the digest region
+        // avoids the self-referencing-hash trap (the QR encodes a
+        // hash of everything-not-itself).
+        let framebuffer_hash = renderer.crc32c_framebuffer_excluding_digest();
 
         let mut buf = [0u8; crate::digest::DIGEST_PAYLOAD_CAPACITY];
         match crate::digest::encode(

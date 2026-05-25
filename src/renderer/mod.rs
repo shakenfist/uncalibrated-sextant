@@ -529,6 +529,98 @@ impl Renderer {
         }
     }
 
+    /// Compute CRC32C of every framebuffer pixel **outside** the
+    /// right-anchored digest region.
+    ///
+    /// Path A of the phase-2 measurement
+    /// (see `PLAN-visual-digest-phase-02-payload.md` *Outcome*):
+    /// reads the framebuffer back one scanline at a time via
+    /// `BltOp::VideoToBltBuffer` (the uefi-rs 0.37 spelling of the
+    /// UEFI 2.10 `VideoToBuffer` op) and hashes every byte outside
+    /// the digest region into a single CRC32C. The digest region
+    /// itself is excluded so the hash does not depend on itself —
+    /// the QR encodes a hash of everything-except-the-QR. Origin
+    /// math mirrors `draw_digest` (same `saturating_sub`) so the
+    /// excluded rectangle tracks the digest position on every mode.
+    ///
+    /// Per-row stack scratch is sized for the largest supported
+    /// mode (1920 px wide → 7680 bytes of `BltPixel`), well within
+    /// the UEFI stack. One `BltOp::VideoToBltBuffer` call per
+    /// scanline avoids any framebuffer-sized allocation.
+    ///
+    /// Measured cost under OVMF+QXL at 1024x768: ~21.5M cycles per
+    /// call (median over five runs), ~7 ms at 3 GHz. Phase 2 calls
+    /// this three times per boot from `Scene::refresh_digest`, so
+    /// the steady-state cost is ~21 ms of refresh-pause time per
+    /// boot — concentrated at scene-phase boundaries rather than
+    /// smeared across every paint site, which is the property that
+    /// drove the A-over-B choice.
+    #[cfg(feature = "digest-smoke")]
+    pub(crate) fn crc32c_framebuffer_excluding_digest(&mut self) -> u32 {
+        use crate::digest::CRC32C;
+
+        // Per-row stack buffer, sized for the largest supported
+        // mode. `BltPixel` is `#[repr(C)]` with four u8 fields
+        // (blue, green, red, reserved) in uefi-rs 0.37, so
+        // reinterpreting as `&[u8]` is sound.
+        const MAX_WIDTH: usize = 1920;
+        let mut row_buf: [BltPixel; MAX_WIDTH] = [BG; MAX_WIDTH];
+
+        // Runtime right-anchored digest region — same math as
+        // `draw_digest` so the excluded rectangle matches the
+        // painted rectangle exactly.
+        let origin_x = self.width.saturating_sub(MARGIN_X + DIGEST_REGION_PX);
+        let origin_y = self
+            .height
+            .saturating_sub(MARGIN_Y + CELL_H + DIGEST_REGION_PX);
+        let digest_x_end = origin_x + DIGEST_REGION_PX;
+        let digest_y_end = origin_y + DIGEST_REGION_PX;
+
+        let mut digester = CRC32C.digest();
+        let row_width = self.width.min(MAX_WIDTH);
+
+        for y in 0..self.height {
+            // Read one scanline back from the framebuffer.
+            let dest_slice = &mut row_buf[..row_width];
+            let _ = self.gop.blt(BltOp::VideoToBltBuffer {
+                buffer: dest_slice,
+                src: (0, y),
+                dest: BltRegion::Full,
+                dims: (row_width, 1),
+            });
+
+            // Reinterpret as raw bytes.
+            // SAFETY: BltPixel is `#[repr(C)]` and contains only
+            // four u8 fields; the bit pattern is well-defined and
+            // safe to read as a byte slice for the row's lifetime.
+            let byte_slice = unsafe {
+                core::slice::from_raw_parts(
+                    row_buf.as_ptr() as *const u8,
+                    row_width * core::mem::size_of::<BltPixel>(),
+                )
+            };
+
+            if y < origin_y || y >= digest_y_end {
+                // Whole row sits outside the digest band — hash
+                // everything.
+                digester.update(byte_slice);
+            } else {
+                // Row intersects the digest band — split around
+                // the digest x-range so the digest pixels are
+                // excluded.
+                let px_size = core::mem::size_of::<BltPixel>();
+                let left_end = origin_x.min(row_width);
+                let right_start = digest_x_end.min(row_width);
+                digester.update(&byte_slice[..left_end * px_size]);
+                if right_start < row_width {
+                    digester.update(&byte_slice[right_start * px_size..]);
+                }
+            }
+        }
+
+        digester.finalize()
+    }
+
     /// Render a telemetry line: `LABEL .......... STATUS`.
     ///
     /// The label is drawn from column 0. A space follows the label, then

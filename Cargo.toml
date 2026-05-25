@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 uefi = { version = "=0.37.0", features = ["panic_handler", "alloc", "global_allocator"] }
 qrcodegen-no-heap = "1.8.1"
+crc = { version = "3", default-features = false }
 
 [features]
 default = []

@@ -10,6 +10,7 @@
 
 mod bootloader;
 mod cursor;
+mod digest;
 mod event;
 mod logo;
 mod probes;

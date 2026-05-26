@@ -1,4 +1,4 @@
-.PHONY: build clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes digest-smoke
+.PHONY: build clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes digest-smoke digest-payload-smoke
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -51,6 +51,22 @@ digest-smoke:
 	    uncalibrated-sextant-build:1.88.0 \
 	    cargo build --release --features digest-smoke
 	./scripts/digest-smoke.sh
+
+# Full-scene companion to digest-smoke. Where digest-smoke holds in
+# AWAITING and verifies the QR round-trip, this target drives the
+# scripted scene through to parking, screendumps, decodes, and asserts
+# a richer set of TLV invariants (magic + version + frame counter >= 3
+# + record count >= 1 + per-record tag validation). Surfaces the
+# trailing framebuffer CRC32C in the success line.
+digest-payload-smoke:
+	docker build -t uncalibrated-sextant-build:1.88.0 .
+	docker run --rm \
+	    -v "$(CURDIR)":/work \
+	    -v uncalibrated-sextant-target:/work/target \
+	    -w /work \
+	    uncalibrated-sextant-build:1.88.0 \
+	    cargo build --release --features digest-smoke
+	./scripts/digest-payload-smoke.sh
 
 vendor-probes:
 	./scripts/vendor-language-probes.py > src/probes.rs

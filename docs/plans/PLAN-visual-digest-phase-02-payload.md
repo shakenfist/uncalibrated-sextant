@@ -177,6 +177,15 @@ Path A chosen because:
   read-back at AWAITING. The scripted-scene smoke
   remains a deliverable for the follow-up plan.
 
+  **Tracked separately in
+  [PLAN-headless-readback-bug.md](PLAN-headless-readback-bug.md)**
+  with reproduction steps, the hypotheses, and the
+  candidate remediation paths in cost order. Resolving
+  that plan before Phase 3 starts is the cleanest
+  sequencing — Phase 3's repaint integration will
+  increase the per-boot refresh count and surface the
+  bug earlier than Phase 2 did.
+
 ### Surprises and findings
 
 - **uefi-rs 0.37 spelling.** The variant is

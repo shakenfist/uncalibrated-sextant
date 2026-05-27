@@ -23,3 +23,4 @@ repo root. For pre-push audits of our own work see `PUSH-TEMPLATE.md`.
 | Date | Plan | Intent | Status |
 |------|------|--------|--------|
 | 2026-04-25 | [Language probes](PLAN-language-probes.md) | Worldbuilding side quest: four boot-sequence lines in Mandarin / Hindi / Spanish / English establish that English is no longer the default in the fictional universe; introduces a generic text-bitmap renderer | Complete (commits bb41e70, 288a839) |
+| 2026-05-27 | [Headless GOP read-back bug](PLAN-headless-readback-bug.md) | Investigation: the second `BltOp::VideoToBltBuffer` read-back in a single boot silently breaks subsequent `BltOp::BufferToVideo` writes under `qemu -display none` (any -vga backend). Surfaced during PLAN-visual-digest phase 2 step 2d; degrades the headless scripted-scene smoke. Does not affect interactive SPICE. | Open |

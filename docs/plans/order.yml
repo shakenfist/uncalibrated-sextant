@@ -12,3 +12,4 @@
 - PLAN-display-mode-keystrokes.md: Display-mode keystrokes
 - PLAN-audit-cleanup.md: Audit cleanup
 - PLAN-visual-digest.md: Visual on-screen digest
+- PLAN-headless-readback-bug.md: Headless GOP read-back bug

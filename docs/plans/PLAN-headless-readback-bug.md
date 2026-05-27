@@ -5,11 +5,14 @@ Standalone plan, investigation pending.
 ## Status
 
 **Status: Open. Surfaced during PLAN-visual-digest phase 2
-step 2d (commit `6b62da2`). Forced the scripted-scene smoke
-to degrade to AWAITING-only. Not blocking production use
-(only headless QMP screendump is affected), but blocks
-useful CI / regression coverage of the full scripted-scene
-digest path.**
+step 2d (commit `6b62da2`). Operator confirmation under
+`make spice-ryll-digest` then revealed the bug also
+reproduces under interactive SPICE — the parking screen
+carries no QR despite the post-`run_booting`
+`refresh_digest` call firing. The Phase 2 closeout's
+"production reality works fine" claim was an incorrect
+extrapolation from an AWAITING-screen observation; the
+bug affects the production path too.**
 
 ## Prompt
 
@@ -70,14 +73,25 @@ backend tested — `std` and `qxl` both):
    intact; only the digest region's bottom-right
    rectangle stays untouched.
 
-Under interactive `make spice-ryll` (which uses `-vga qxl
--spice port=… -display none` but with a SPICE display
-server attached): the bug does **not** reproduce. All
-three per-boot refreshes paint correctly; the parking
-screen carries a real digest.
+Under interactive `make spice-ryll-digest` (which uses
+`-vga qxl -spice port=… -display none` with a SPICE
+display server attached): operator-confirmed observation
+shows the bug **does** reproduce here too. The AWAITING
+screen carries the first-refresh QR correctly, but the
+parking screen — after the post-`run_booting` refresh #2
+should have painted — shows no QR. The earlier hypothesis
+that SPICE's surface-management masked the bug was wrong;
+the prior "QR appears under spice-ryll" observation was
+captured at AWAITING (one read-back), not parking (two
+read-backs).
 
-The differentiator is therefore SPICE's surface-management
-/ dirty-tracking, not a `-vga` backend choice.
+The bug therefore appears to be universal across every
+`-display`/`-vga`/`-spice` combination we have tested.
+The original "headless vs interactive" framing was a
+red herring driven by an under-specified test. Re-cast:
+the failure mode is "second `BltOp::VideoToBltBuffer`
+read-back per boot breaks subsequent `BltOp::BufferToVideo`
+writes, regardless of the display backend."
 
 ## Reproduction
 
@@ -110,19 +124,25 @@ should be re-derived if the file is gone.
 
 From the 2c-measure and step 2d investigations:
 
-| Configuration                                       | Reads | Result          |
-|-----------------------------------------------------|-------|-----------------|
-| `-vga std -display none`                            | 1     | QR painted ✓    |
-| `-vga std -display none`                            | 2+    | QR missing ✗    |
-| `-vga qxl -display none`                            | 1     | QR painted ✓    |
-| `-vga qxl -display none`                            | 2+    | QR missing ✗    |
-| `-vga qxl -spice -display none` (`make spice-ryll`) | 3+    | QR painted ✓    |
+| Configuration                                              | Reads | Result          |
+|------------------------------------------------------------|-------|-----------------|
+| `-vga std -display none`                                   | 1     | QR painted ✓    |
+| `-vga std -display none`                                   | 2+    | QR missing ✗    |
+| `-vga qxl -display none`                                   | 1     | QR painted ✓    |
+| `-vga qxl -display none`                                   | 2+    | QR missing ✗    |
+| `-vga qxl -spice -display none` (`make spice-ryll-digest`) | 1     | QR painted ✓    |
+| `-vga qxl -spice -display none` (`make spice-ryll-digest`) | 2+    | QR missing ✗    |
 
-- The bug is not a uncalibrated-sextant code defect: the
-  same `Renderer::crc32c_framebuffer_excluding_digest` +
-  `draw_digest` sequence works under interactive SPICE.
-- The bug is not isolated to `-vga std`: it reproduces
-  identically under `-vga qxl` headless.
+- The bug is universal across the display backends we
+  have tested: `-vga std -display none`,
+  `-vga qxl -display none`, and `-vga qxl -spice` (with
+  a SPICE client attached) all show the same failure
+  pattern on the second read-back.
+- The bug is therefore most likely in OVMF's GOP driver
+  layer (above the display backend), or in uefi-rs 0.37's
+  `Blt` wrapper, or in EDK2's `EFI_GRAPHICS_OUTPUT_PROTOCOL`
+  implementation that all backends share. The display
+  backend is a red herring.
 - The hash is computed correctly (the CRC bytes appear in
   the decoded payload from the AWAITING smoke). The bug
   is purely in the write-back side after the second
@@ -134,25 +154,27 @@ From the 2c-measure and step 2d investigations:
 
 ## Hypotheses
 
-In rough order of plausibility:
+In rough order of plausibility (revised after the
+SPICE-also-fails observation):
 
-1. **OVMF caches a framebuffer surface between Blt calls,
-   and a `VideoToBltBuffer` invalidates the cache without
-   re-pinning the destination for subsequent
-   `BufferToVideo` writes.** Under SPICE the QXL paravirt
-   ring re-pins on every transaction; under `-display
-   none` nothing re-pins. Testable by issuing a
-   no-op `BltOp::VideoFill` of a 1×1 transparent pixel
-   between read-back and the next paint and seeing
-   whether the writes start landing again.
+1. **OVMF / uefi-rs leaves the GOP in a stuck state
+   after `VideoToBltBuffer`** — possibly the BltBuffer
+   pointer or geometry stays cached, and the next
+   `BufferToVideo` either targets the stale buffer or
+   no-ops because the protocol thinks it's still in
+   read-mode. Testable cheaply with hypothesis-A
+   remediation (no-op fill between read-back and next
+   paint) and hypothesis-B remediation (re-query
+   `current_mode_info` to nudge state).
 
-2. **QEMU's display backend lazy-flushes pending writes
-   into the framebuffer that gets snapshotted by
-   `screendump`, and the lazy-flush is starved when
-   there's no display client attached and no SPICE
-   surface dirty-tracking.** Less plausible — would
-   expect *all* writes to be lost, not just digest
-   writes following a read-back.
+2. **`BltOp::VideoToBltBuffer` semantically requires a
+   specific cleanup or barrier call** documented
+   nowhere we've looked, which uefi-rs's safe wrapper
+   doesn't emit. Testable by reading the OVMF
+   `OvmfPkg/QemuVideoDxe/Gop.c` source and the
+   EDK2 `MdeModulePkg/Universal/Console/GraphicsConsoleDxe/`
+   to find any state machine governing `BltOperation`
+   sequencing.
 
 3. **`BltOp::VideoToBltBuffer` leaves the GOP in a state
    where its `Mode->FrameBufferBase` is stale or
@@ -201,26 +223,40 @@ refresh its internal state. Tests hypothesis 3.
 loop. Tests hypothesis 4. Adds 50 ms per refresh × 3
 refreshes = 150 ms per boot; visible but tolerable.
 
-**D. Move the smoke to a ryll-driven path.** Have ryll
+**D. Revert to path B (incremental hash).** Path B was
+measured at ~195x per-paint slowdown on `clear()`, which
+sounded prohibitive when path A appeared to work in
+production. Now that path A is confirmed broken on the
+second read-back across every backend we have tested,
+path B's worst-case cost might be the right trade-off:
+the digest payload becomes "what we *intended* to put on
+screen" rather than "what GOP says is there", but the
+writes that paint the digest itself actually land.
+Documented as a step-2c revisit if A/B/C all fail.
+
+**E. Move the smoke to a ryll-driven path.** Have ryll
 connect over SPICE, drive keystrokes via the SPICE input
 protocol, and decode the QR from a SPICE-captured frame
-rather than QMP screendump. This sidesteps the headless-
-GOP bug entirely by using the production observation
-path. Larger change: requires ryll-side QR decode
-(already on its roadmap per DESIGN.md two-channel
-architecture, but not yet implemented), and a smoke
-script that orchestrates ryll + QEMU + assertion.
+rather than QMP screendump. **This no longer sidesteps
+the bug** (since SPICE also reproduces it), but it does
+align the smoke with the production observation path. If
+the bug is fixed by A/B/C/D, the ryll-driven smoke is the
+right long-term shape regardless. Defer until either the
+bug is fixed or ryll-side QR decode lands.
 
-**E. File upstream against OVMF / QEMU.** Construct a
+**F. File upstream against OVMF / QEMU.** Construct a
 minimal C / EDK2 repro outside uncalibrated-sextant and
 file against `qemu-devel` and / or `tianocore` /
 `edk2-devel` lists. Highest leverage if a fix lands
 upstream; longest timeline.
 
-A and B are cheap enough that they're worth trying as
-the first investigation step. If either fixes it,
-the fix is one line and the smoke immediately becomes
-useful.
+A and B are cheap enough (each a ~one-line addition
+inside `Renderer::crc32c_framebuffer_excluding_digest`)
+that they are the obvious first experiments. If either
+fixes it, both production (parking-screen digest)
+**and** the headless smoke immediately start working.
+If neither does, escalate to C (stall), then D (revert
+to path B), then F (upstream).
 
 ## Success criteria
 

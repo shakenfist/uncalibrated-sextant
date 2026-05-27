@@ -1,4 +1,4 @@
-.PHONY: build clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes digest-smoke digest-payload-smoke
+.PHONY: build clean qemu spice spice-ryll spice-ryll-digest release release-verify screenshot screenshot-modes vendor-probes digest-smoke digest-payload-smoke
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -14,6 +14,22 @@ spice: build
 	./scripts/spice.sh dist/esp.img
 
 spice-ryll: build
+	./scripts/mkesp.sh
+	./scripts/spice-ryll.sh dist/esp.img
+
+# spice-ryll variant that rebuilds with the digest-smoke cargo feature
+# before handing off to spice-ryll.sh. Use this for manual verification
+# that the visual digest renders correctly under interactive SPICE
+# (the production observation path); plain `make spice-ryll` compiles
+# the digest call sites out entirely.
+spice-ryll-digest:
+	docker build -t uncalibrated-sextant-build:1.88.0 .
+	docker run --rm \
+	    -v "$(CURDIR)":/work \
+	    -v uncalibrated-sextant-target:/work/target \
+	    -w /work \
+	    uncalibrated-sextant-build:1.88.0 \
+	    cargo build --release --features digest-smoke
 	./scripts/mkesp.sh
 	./scripts/spice-ryll.sh dist/esp.img
 

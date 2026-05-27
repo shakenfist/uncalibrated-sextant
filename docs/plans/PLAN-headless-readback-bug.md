@@ -12,7 +12,16 @@ carries no QR despite the post-`run_booting`
 `refresh_digest` call firing. The Phase 2 closeout's
 "production reality works fine" claim was an incorrect
 extrapolation from an AWAITING-screen observation; the
-bug affects the production path too.**
+bug affects the production path too. The 2026-05-27
+investigation session falsified the read-back hypothesis
+entirely: path B (incremental hash, no read-back at all)
+shows the same symptom, and diagnostic checkpoints prove
+the binary wedges between `run_booting` returning and
+`run_parked` painting — `refresh_digest` is downstream
+of the actual bug, not its source. The plan title is
+now misleading but kept for continuity; the actual bug
+is "framebuffer paints silently stop working at the
+run_booting → run_parked seam".**
 
 ## Prompt
 
@@ -257,6 +266,121 @@ fixes it, both production (parking-screen digest)
 **and** the headless smoke immediately start working.
 If neither does, escalate to C (stall), then D (revert
 to path B), then F (upstream).
+
+### Experimental results (2026-05-27 session)
+
+Tried A, B, C, and D in sequence, all under the
+worktree-isolated headless harness at
+`/tmp/digest-experiment.sh` (full scripted scene through
+to parking + screendump + zbarimg). **All four failed.**
+
+- **A (no-op `BltOp::VideoFill` after read-back loop)**:
+  parking screen renders correctly but no QR. zbarimg
+  rc=4. Hypothesis 1 disconfirmed for the simplest
+  nudge form.
+- **B (re-query `current_mode_info` after read-back)**:
+  same symptom as A. Disconfirmed.
+- **C (50 ms `uefi::boot::stall` after read-back)**:
+  not landed because the diagnostic experiments below
+  shifted the suspected root cause away from the
+  read-back path entirely.
+- **D (revert to path B — incremental hash during
+  paint)**: cleanly implemented (per-paint
+  `hash_buffer` / `hash_fill` hooks on every renderer
+  paint method, plus `crc32c_paused` discipline around
+  `draw_digest`'s self-paint), `make digest-smoke`
+  passed (new CRC `0x0bb0bdef` at AWAITING), but the
+  parking-screen QR was still missing. This is the
+  **critical finding**: path B never touches the GOP
+  read-back path at all, so the bug cannot be specific
+  to `BltOp::VideoToBltBuffer`. Reverted (not
+  committed).
+
+### Diagnostic experiments after D failed
+
+Direct probing showed the bug is not what we thought.
+
+1. **Two `refresh_digest` calls back-to-back inside
+   `run_awaiting` produce `frame=2` in the smoke
+   output** (the decoded QR's frame counter advances
+   from 1 to 2 between paints, and the second QR
+   overwrites the first). So `draw_digest` does NOT
+   universally fail on its Nth invocation; back-to-back
+   at AWAITING works fine.
+
+2. **Calling `refresh_digest` from inside `run_parked`
+   (after `draw_line(SYSTEM_ONLINE_TEXT, …)`) instead
+   of between `run_booting` and `run_parked` does not
+   help.** Neither the digest QR nor the
+   SYSTEM_ONLINE text appears on the parking-screen
+   screendump.
+
+3. **Sentinel paints at multiple checkpoints reveal
+   the binary never reaches `CKPT-AFTER-BOOTING`** —
+   a `draw_text_at(...)` call placed immediately after
+   `run_booting` returns. The screendump consistently
+   stops at run_booting's last visible line ("EMERGENCY
+   SAFE BOOT COMPLETE. OPERATOR ASSISTANCE REQUIRED.")
+   and renders nothing painted after it. Increasing
+   the harness wait from 5 s to 15 s changes nothing
+   in the visible screen.
+
+4. **The user's external observation under
+   `make spice-ryll-digest` matches**: they see the
+   "operator assistance required" screen with no QR.
+   They have never seen "SYSTEM ONLINE. AWAITING
+   INSTRUCTIONS." (the actual `run_parked` opening
+   text). So the binary is wedged between
+   `run_booting` returning and `run_parked` painting
+   its first line, in **both** headless and
+   interactive SPICE configurations.
+
+### Revised hypothesis
+
+The root cause is **not** a read-back bug. It is a hang
+or silent paint-failure that occurs after `run_booting`
+returns (or possibly at the end of its POST script's
+stall), regardless of whether `refresh_digest` is even
+called. `refresh_digest` was the first thing called
+after `run_booting` in the experimental harness, which
+made it look like the culprit; in fact the same
+symptom appears when `refresh_digest` is moved into
+`run_parked` (the SYSTEM_ONLINE_TEXT draw call also
+fails to paint).
+
+Candidate causes worth investigating next:
+
+- **UEFI resource exhaustion** after many `BltOp`
+  operations + `uefi::boot::stall` calls during the
+  PRE + bootloader + POST sequence. The bootloader
+  alone issues hundreds of `BltOp::BufferToVideo`
+  calls during the paste-capture echo loop.
+- **A pending key in the input queue** (perhaps a
+  spurious paste-character event) consumed by
+  `stall_with_keys`' polling and routed somewhere that
+  diverges or blocks.
+- **A panic inside `digest::encode` or `draw_digest`
+  on a payload shape we haven't seen** — though this
+  would not explain SYSTEM_ONLINE_TEXT also failing
+  to paint after a moved refresh call site.
+- **An interaction between `uefi::boot::stall` (boot
+  services) and the GOP protocol handle held
+  exclusively by `Renderer`** that takes effect after
+  some N events.
+
+### Recommended next investigation
+
+- Remove `refresh_digest` entirely and verify
+  `run_parked`'s SYSTEM_ONLINE_TEXT renders correctly
+  in a control run. If it does, the bug is in
+  `refresh_digest`'s call site placement; if it does
+  not, the bug is upstream in `run_booting` or the
+  bootloader scene and the digest is downstream of
+  it.
+- If the bug is upstream, instrument
+  `bootloader::run_success` and `play_script`'s last
+  iteration with sentinel paints to find the exact
+  point where the framebuffer stops accepting paints.
 
 ## Success criteria
 

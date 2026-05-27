@@ -382,6 +382,122 @@ Candidate causes worth investigating next:
   iteration with sentinel paints to find the exact
   point where the framebuffer stops accepting paints.
 
+### Experimental results (2026-05-28 session)
+
+**Critical methodology error in prior sessions.** All
+A/B/D experiments and previous "the bug reproduces
+everywhere" findings were against **stale ESP images**:
+`make build` writes the binary into a docker volume
+(`uncalibrated-sextant-target`), and the host's
+`dist/esp.img` is only refreshed when
+`scripts/mkesp.sh` runs. The earlier headless harness
+ran `mkesp.sh` once, then subsequent `make build`
+invocations updated the volume but the headless tests
+kept booting the original binary. The previous
+findings recorded against these stale builds therefore
+do **not** falsify what they appeared to falsify.
+
+After re-running with strict `make build &&
+./scripts/mkesp.sh && /tmp/digest-experiment.sh`
+ordering, the picture is materially different:
+
+**Control experiment (refresh_digest disabled at all
+four call sites):** `run_parked` paints
+`SYSTEM ONLINE. AWAITING INSTRUCTIONS.` correctly,
+plus all diagnostic CKPT markers. So with
+`refresh_digest` out of the picture entirely, the
+scene completes cleanly. **`refresh_digest` IS what's
+causing the wedge.**
+
+**Remediations re-tested with proper restaging:**
+
+- **A alone (no-op `BltOp::VideoFill` at (0,0) after
+  read-back loop in `crc32c_framebuffer_excluding_digest`)**:
+  the wedge clears — `run_parked` now runs and
+  `SYSTEM ONLINE` paints. But the QR itself still does
+  not appear in the bottom-right.
+- **A+B (re-query `current_mode_info` layered on A)**:
+  same as A — wedge clears, QR absent.
+- **A+B+C (50 ms `uefi::boot::stall` layered on A+B)**:
+  same — wedge clears, QR absent.
+
+So A alone unblocks the post-`run_booting` GOP state
+enough that `run_parked` paints, but **not enough that
+`draw_digest`'s own `BltOp` calls land on the
+framebuffer**.
+
+**Diagnostic isolation of where paints fail.** Tested
+by stripping `draw_digest` to a single explicit
+operation:
+
+| Diagnostic                                     | Result          |
+|------------------------------------------------|-----------------|
+| `draw_digest` does one `BltOp::BufferToVideo` (sentinel block at (200, 600), 32x4 px) | Sentinel **missing** in screendump. |
+| `draw_digest` does one `BltOp::VideoFill` at (200, 600), 64x16 px (no buffer ptr)     | Block **missing**. |
+| `draw_digest` calls `self.clear()` (whole-screen `VideoFill`) and returns             | Screen NOT cleared — boot transcript stays visible. `clear()` itself did not paint. |
+| Same `self.clear()` outside `draw_digest`, in `run_parked` (control)                  | Works — wipes the screen. |
+| `BltOp` result captured into `Result`, ok/err branch each paints a marker             | **Neither** marker appears (so the result branch is taken, but neither marker's BltOp paints either). |
+
+**So the failure mode is:** with A applied, any
+`BltOp` issued from inside `draw_digest` silently
+fails to commit pixels to the framebuffer.
+Immediately after `draw_digest` returns, the SAME
+`gop` handle's BltOps in `run_parked` commit
+correctly. **The bug is genuinely state-bound to
+"inside this function call".**
+
+### Revised hypotheses (2026-05-28)
+
+The previous "post-read-back GOP state" hypothesis is
+still partly right — A is necessary to unblock the
+wedge — but insufficient. There is a **second**
+effect that suppresses paints specifically inside
+`draw_digest`. Candidate causes:
+
+- **uefi-rs ScopedProtocol borrow interaction.**
+  `Renderer` holds `gop: ScopedProtocol<GraphicsOutput>`.
+  When `draw_digest` is called with `&mut self`, the
+  protocol is borrowed through `self.gop`. If something
+  in the call chain (refresh_digest → digest::encode →
+  draw_digest) temporarily releases-and-reacquires GOP
+  or shadows it, the gop handle inside `draw_digest`
+  might be a stale view.
+- **`payload: &[u8]` lifetime intersecting with `&mut
+  self`.** The shared borrow of `buf` from
+  refresh_digest could trigger some optimisation that
+  reorders operations; ruled out as unlikely under
+  rustc's standard inlining.
+- **A "second-call-of-refresh_digest in this boot"
+  trigger** specific to the codegen — possibly a
+  static-mut or `core::mem::replace` somewhere that we
+  haven't found.
+- **An OVMF firmware quirk** where Blt operations
+  from a particular call address range fail. Hard to
+  test without a debugger.
+
+### Recommended next investigation (revised 2026-05-28)
+
+1. **Try calling `draw_digest`'s body inline at line
+   317 in `Scene::run` (instead of through
+   `refresh_digest`).** If that works, the bug is in
+   the indirection layer; if not, it's in the
+   draw_digest body itself.
+2. **Try moving the gop reference out of Renderer
+   and passing it as a parameter.** If that changes
+   anything, the issue is borrow-related.
+3. **Capture and panic on `result` of a Blt inside
+   draw_digest** — see whether it actually returns
+   `Err` (currently swallowed by `let _ = ...`).
+4. **Test with a simpler payload shape** — bypass
+   `digest::encode`, just call `draw_digest(b"x")`
+   directly to rule out anything in encoding state.
+
+In the meantime, **A is a partial fix**: it stabilises
+the system enough that the parking screen renders
+correctly, even if the digest itself does not. That
+might be worth committing on its own with a clear
+caveat, so production at least doesn't wedge.
+
 ## Success criteria
 
 This plan is closed when:

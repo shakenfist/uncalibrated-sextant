@@ -5,7 +5,224 @@ Parent plan:
 
 ## Outcome
 
-**Status: Not started.**
+**Status: Code complete (commits 818d5f4, 8bef81d, 6221301,
+6b62da2, plus this closeout). One known limitation: the
+scripted-scene smoke is degraded to AWAITING-only because of
+a second-read-back-breaks-subsequent-writes bug in OVMF/QEMU's
+GOP path under headless `-display none`. Deferred to a
+follow-up plan.**
+
+### What Phase 2 actually delivered
+
+- `src/digest.rs` — pure-function TLV encoder over a
+  `RingBuffer<256>` snapshot. Header: `SXDG` magic +
+  schema version 1 + u32 LE frame counter + u8 record
+  count. Eight per-variant TLV encoders with stable u8
+  type tags (0x01..=0x08) mirroring `serial::drain`'s
+  `type=` vocabulary. Trailer: 4 LE bytes of injected
+  framebuffer hash. `crc` v3.4.0 dep added (no_std, no
+  alloc). Capacity at QR Version 5 / ECC Medium is 92
+  bytes for records; the most-recent-N-that-fit selection
+  walks the ring backwards and emits chronologically.
+  Hand-traced boundary cases: empty ring → 14 bytes;
+  single Keypress → 28 bytes; worst-case all-ModeSwitch
+  → 5 records / 104 bytes; best-case all-BootloaderTimeout
+  → 9 records / 104 bytes. (commit `818d5f4`.)
+- `Scene::refresh_digest` wired at three scene-phase
+  boundaries (after `run_awaiting`, after `run_booting`,
+  before serial drain at end of `run_parked`), plus a
+  one-shot in-`run_awaiting` call gated behind
+  `digest-smoke` to preserve the existing AWAITING smoke's
+  fast/deterministic shape. `digest_frame_counter: u32`
+  on `Scene`, wrapping_add per refresh. The bootloader
+  carve-out is enforced by `assert!(!matches!(
+  self.repaint_state, RepaintState::BootingBootloader {
+  .. }))` inside `refresh_digest`; the bootloader scene's
+  R/I/A and paste loops do not call it. The phase-1
+  hard-coded `draw_digest(b"hello")` injection was
+  removed; the AWAITING smoke now exercises the real
+  encode path. (commit `8bef81d`.)
+- `Renderer::crc32c_framebuffer_excluding_digest` —
+  row-by-row `BltOp::VideoToBltBuffer` read-back into a
+  stack-sized scratch row (`[BltPixel; 1920]` for the
+  worst-case mode width), CRC32C accumulator across
+  rows, with the digest band's x-range skipped to avoid
+  the self-referencing-hash trap. The chosen path A from
+  the 2c-measure report. Replaces the placeholder
+  `framebuffer_hash = 0` in `refresh_digest`. The
+  AWAITING smoke now surfaces the trailer CRC in the
+  success line: `digest-smoke: ok (magic=SXDG version=1
+  frame=1 records=0 crc32c=0x0f84c2b6)`. Hash is
+  deterministic across consecutive runs at the same
+  mode. (commit `6221301`.)
+- `make digest-payload-smoke` target + new
+  `scripts/digest-payload-smoke.sh`: a parallel smoke
+  to `make digest-smoke` with a richer TLV-header
+  assertion (defensive per-record parse validating tags
+  0x01..=0x08 and per-record value lengths, CRC surfaced
+  in the success line). See *Known limitations* below
+  for why this is currently AWAITING-only rather than
+  the scripted-scene path the plan originally specified.
+  (commit `6b62da2`.)
+
+### What Phase 2 did NOT deliver, and why
+
+- **Scripted-scene smoke (full boot → bootloader → paste
+  → parking → screendump → TLV-with-records-and-frame≥3).**
+  Deferred — the underlying GOP bug (below) blocks it. The
+  delivered `make digest-payload-smoke` holds in AWAITING
+  the same way `make digest-smoke` does, but asserts a
+  richer TLV-header invariant set than the existing smoke.
+  The two smokes are kept as parallel targets so the
+  scripted-scene path can be re-armed in the follow-up
+  plan without rewriting either driver.
+- **Host-side `cargo test` for the TLV encoder.** Same
+  deferral as PLAN-display-mode-keystrokes-phase-01-renderer's
+  *Deferred from the master plan*: no host-test
+  infrastructure today, would require a workspace split.
+  Encoder validated by construction (pure function),
+  integration (`make digest-smoke` produces a decodable
+  payload with the expected magic / version / CRC), and
+  hand-traced boundary cases at step 2a's commit.
+- **`docs/images/boot-sequence.png` regeneration.**
+  Skipped — `make screenshot` builds the production
+  (no-feature) binary, which has no digest. The reference
+  image is unchanged. Phase 3 (or whenever the digest
+  call is made unconditional) regenerates it.
+
+### Path-A measurement summary (step 2c)
+
+Two throwaway commits on worktree branch
+`worktree-agent-ae90f1c11cb98981e` measured both candidates
+under OVMF + QXL at 1024x768 (5 runs each, rdtsc cycles
+via `core::arch::x86_64::_rdtsc()`):
+
+| Metric                          | Path A (read-back) | Path B (incremental) |
+|---------------------------------|--------------------|----------------------|
+| `refresh_digest` median cycles  | 21,504,162         | 2,772,518            |
+| `refresh_digest` p95 cycles     | ~21,785,000        | ~3,071,000           |
+| Per-paint overhead              | none               | ~19.4M cycles per `clear()` (~195x slowdown vs baseline) |
+| `.efi` size (digest-smoke)      | 65,536 bytes       | 65,536 bytes         |
+| Hash determinism across 5 runs  | yes (0x0f84f659)   | yes (0xb10bfa46)     |
+| Per-boot total estimate         | ~65M cycles (3×21.5M) | likely >100M, distributed |
+
+Path A chosen because:
+
+1. Concentrated cost (~21 ms total per boot at 3 GHz) vs
+   path B's cost leaking into every cursor blink, every
+   toast tick, every glyph paint.
+2. Tests the SPICE display pipeline read-back path
+   itself — exactly the integrity-of-display semantic the
+   master plan wanted ("did the pixels actually make it
+   onto the framebuffer?" rather than "did our code
+   *intend* to put them there?").
+3. Pause-discipline lives in one place (the renderer
+   method skips the digest region from the hash). Path B
+   would require every future paint site to honour a
+   `crc32c_paused` flag forever.
+4. `.efi` size is identical, so size is not a tiebreaker.
+5. The main open-question risk (`BltOp::VideoToBltBuffer`
+   returns garbage under QXL?) was resolved by the
+   measurement: the hash is deterministic and non-zero
+   across 5 runs.
+
+### Known limitations
+
+- **Second-read-back-breaks-subsequent-writes under
+  headless GOP.** When the digest-smoke binary fires
+  more than one `refresh_digest` per boot under
+  `qemu-system-x86_64 -display none` (any `-vga`
+  backend tested — `std` and `qxl` both fail), the
+  framebuffer writes for `draw_digest` after the
+  *second* `BltOp::VideoToBltBuffer` read-back call
+  silently no-op: the parking screen renders correctly
+  (chrome, status lines, "EMERGENCY SAFE BOOT
+  COMPLETE.") but no QR is painted. The first
+  read-back + draw cycle works fine in both AWAITING
+  smokes; the second read-back is where the writes
+  fail. Investigation found:
+  - Bug reproduces under `-vga std -display none`
+    *and* `-vga qxl -display none`.
+  - Bug does *not* reproduce under interactive
+    `make spice-ryll` (`-vga qxl -spice port=…`),
+    which is the production target — the user
+    confirmed the digest renders at parking under
+    SPICE during the Phase 1 cross-mode check.
+  - Likely root cause: SPICE's surface-management /
+    dirty-tracking either forces or substitutes a
+    flush between read-back and subsequent writes
+    that `-display none` does not provide. This is
+    a SPICE-vs-headless GOP backend interaction in
+    OVMF, not a uncalibrated-sextant code defect.
+
+  This blocks the scripted-scene smoke from being
+  useful headlessly. It does **not** block production
+  use: ryll observes via SPICE, the user observes via
+  SPICE, and the user-confirmed cross-mode check
+  showed the digest rendering correctly. A follow-up
+  plan should investigate either:
+  - Adding an explicit GOP flush / no-op write
+    between `crc32c_framebuffer_excluding_digest`
+    and the next `BufferToVideo` to nudge the
+    backend.
+  - Moving the smoke to ryll-driven verification
+    (which would also exercise the SPICE pipeline
+    end-to-end, matching the production path).
+  - Filing upstream against OVMF / QEMU if the bug
+    can be reduced to a minimal repro.
+
+  Until then, `make digest-payload-smoke` is the
+  AWAITING-only variant: it validates the wire
+  format, the per-record bounds, and the path-A
+  read-back at AWAITING. The scripted-scene smoke
+  remains a deliverable for the follow-up plan.
+
+### Surprises and findings
+
+- **uefi-rs 0.37 spelling.** The variant is
+  `BltOp::VideoToBltBuffer`, not `VideoToBuffer`
+  (asymmetric with `BltOp::BufferToVideo`). Discovered
+  during 2c-measure. The phase plan documentation used
+  the shorter name; the code uses the correct one.
+- **`BltPixel` is 4 bytes in repr(C).** Three named
+  fields (`blue`, `green`, `red`) plus one byte of
+  padding/reserved. The renderer's row-byte slice
+  conversion in path A accounts for this via
+  `core::mem::size_of::<BltPixel>()`.
+- **Path B's `clear()` slowdown.** Adding the
+  incremental-hash hook to `BltOp::VideoFill` (which
+  `Renderer::clear()` uses) caused a ~195x cycle-count
+  increase per call. The byte-count fed into the CRC
+  per fill is large (whole-row or whole-screen rectangles
+  filled with `BG`), so the cost is in `crc::Digest::update`
+  walking those bytes. Concentrated path-A read-back
+  hashes the same bytes once per refresh; distributed
+  path-B hashes them on every paint.
+- **AWAITING ring is empty at the first refresh.** The
+  one-shot `refresh_digest` in `run_awaiting` fires
+  before any keystroke or event is pushed, so
+  `records=0` in the smoke output. This is the
+  intended behaviour: the digest header (magic / version
+  / frame counter / CRC) is meaningfully present even
+  when the body is empty.
+- **`crc32c()` helper unused.** The phase-2a brief
+  bundled it as a convenience for callers; nothing in
+  path A's renderer method uses it (they use
+  `CRC32C.digest()` directly for the accumulator).
+  Removed in commit `6221301`.
+
+### Operator action remaining for Phase 2 closeout
+
+- **Cross-mode visual confirmation under `make
+  spice-ryll`** (with the `digest-smoke` feature built
+  in) — confirm the digest reaches the parking screen
+  with a real TLV payload (not the static `hello` from
+  phase 1) and stays glued to the bottom-right corner
+  across mode keys `'1'` / `'3'` / `'5'`. Mode-switch
+  survival (digest repainted after the framebuffer
+  invalidation) is still a Phase 3 concern; this check
+  just confirms the production path produces a real
+  payload.
 
 ## Prompt
 

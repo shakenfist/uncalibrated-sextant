@@ -66,6 +66,17 @@ historical record of the false-trail investigation.
 
 ## Prompt
 
+> **Historical note (2026-05-28):** the prompt below was the
+> original brief written when this bug was thought to be a
+> firmware read-back / Blt interaction. It is preserved as
+> written so future readers can see the investigation context
+> that led down the wrong path. Live references to
+> `scripts/digest-smoke.sh`, the `digest-smoke` cargo feature,
+> and the `make digest-smoke` target are all stale — those
+> were removed in commit `07aadfa` after the actual root
+> cause (a mislabelled QR capacity constant) was found and
+> fixed in commit `d66c7f6`.
+
 Before working on this plan, read the *Known limitations*
 section of
 [PLAN-visual-digest-phase-02-payload.md](PLAN-visual-digest-phase-02-payload.md)

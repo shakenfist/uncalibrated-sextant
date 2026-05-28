@@ -459,9 +459,13 @@ impl Renderer {
     /// `DIGEST_PAYLOAD_CAPACITY = 106`; Medium would cap the payload at
     /// 84 bytes and any larger encoded record set would panic in
     /// `encode_binary` below with `DataTooLong`. The ECC level here and
-    /// the capacity constant in `digest.rs` MUST agree — the
-    /// `const _: () = assert!(...)` block in `digest.rs` enforces this
-    /// at compile time. If you change one, change the other.
+    /// the capacity constant in `digest.rs` MUST agree. The
+    /// `const _: () = assert!(...)` block at the `DIGEST_PAYLOAD_CAPACITY`
+    /// definition in `digest.rs` pins the capacity to ≤106 at compile
+    /// time; `QrCodeEcc::Low` is the other half of the pairing here and
+    /// is not const-evaluable, so the cross-file invariant is enforced
+    /// by convention on this side. Read both definitions together when
+    /// changing either.
     ///
     /// Low ECC tolerates only ~7% of modules being unreadable (vs. ~15%
     /// for Medium), so the future CRT-scruff overlay needs to keep its

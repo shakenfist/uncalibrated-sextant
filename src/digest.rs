@@ -108,6 +108,22 @@ pub(crate) const DIGEST_FIXED_OVERHEAD: usize = DIGEST_HEADER_LEN + DIGEST_TRAIL
 #[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_PAYLOAD_CAPACITY: usize = 106;
 
+// Pin the capacity to the V5/Low spec figure. `QrCodeEcc::Low` in
+// `Renderer::draw_digest` is the other half of the pairing and is not
+// const-evaluable, so the cross-file invariant cannot be enforced in
+// one assertion. This half catches the common drift mode: someone
+// raises the capacity (e.g. to fit more records) without realising
+// they need to bump the ECC level too. Raising past 106 forces a
+// re-read of the table above.
+const _: () = assert!(
+    DIGEST_PAYLOAD_CAPACITY <= 106,
+    "DIGEST_PAYLOAD_CAPACITY exceeds QR Version 5 / ECC Low byte-mode \
+     capacity (106 bytes). Either drop the capacity back to 106, or \
+     bump the encoder in src/renderer/mod.rs::draw_digest to a \
+     version/ECC combination that supports the new value (see QR Code \
+     2005 spec, Table 7).",
+);
+
 /// CRC32C algorithm (Castagnoli polynomial, as used in iSCSI, SCTP,
 /// and Btrfs). The `crc` crate computes this with a const table at
 /// zero runtime cost beyond the per-byte XOR. Consumed by

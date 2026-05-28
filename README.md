@@ -13,8 +13,9 @@ have to verify before you can trust them.
 ## Status
 
 The first-playable milestone, the locked-bootloader scene (Phase 2
-of the locked-bootloader milestone), and the display-mode keystrokes
-milestone have landed. The binary runs the
+of the locked-bootloader milestone), the display-mode keystrokes
+milestone, and the visual on-screen digest milestone have landed.
+The binary runs the
 full scene state machine — a wordless lone-cursor "awaiting" screen, a
 scripted boot sequence with the locked-bootloader sub-scene, and a
 SYSTEM ONLINE parking screen — with blinking cursor, LFSR-driven glitch
@@ -22,11 +23,17 @@ substitution, and the Shaken Fist logo rendered as a tiled 8x16 glyph
 grid in the top-right corner. The opening beats probe for Mandarin /
 Hindi / Spanish / English language support (the three non-English probes
 report failure in their own scripts, English OK), establishing that
-English is no longer the default in the fictional universe. On final
-shutdown, the event ring buffer is drained to the UEFI Serial protocol
-as plain text, groundwork for the eventual gRPC-over-serial transport.
-See [DESIGN.md](DESIGN.md) for the channel mapping, two-channel test
-architecture, and aesthetic direction.
+English is no longer the default in the fictional universe. The
+bottom-right of the framebuffer carries a QR code that encodes the
+most-recent ring-buffer events plus a CRC32C of the rest of the
+screen; an external decoder (e.g. ryll) can read this from a
+screenshot to validate the display path independently of serial.
+On final shutdown, the event ring buffer is drained to the UEFI
+Serial protocol as plain text, groundwork for the eventual
+gRPC-over-serial transport. See [DESIGN.md](DESIGN.md) for the
+channel mapping and two-channel test architecture, and
+[docs/visual-digest-format.md](docs/visual-digest-format.md) for the
+QR wire format.
 
 ## What it looks like
 
@@ -43,6 +50,7 @@ make spice           # build, assemble ESP, launch QEMU with SPICE + remote-view
 make release         # produce dist/uncalibrated-sextant.{img,qcow2}
 make release-verify  # headless boot check of both release artifacts
 make screenshot      # regenerate docs/images/boot-sequence.png via QMP
+make digest-payload-smoke  # headless boot, decode parking-screen QR, assert TLV
 make vendor-probes   # regenerate src/probes.rs from the vendor script
 make build           # build the UEFI binary only (Docker, no host toolchain)
 make clean           # remove dist/, target/, and the named Docker volume

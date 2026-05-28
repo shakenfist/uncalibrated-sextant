@@ -96,6 +96,24 @@ invokes directly.
 
 ## Most recently landed
 
+**Visual on-screen digest** (all three phases complete). A QR Version 5
+/ ECC Low code is rendered in the bottom-right of the framebuffer at
+every scene-phase boundary and on every mode switch. It encodes a TLV
+payload of the most-recent events from the same ring buffer that
+feeds `serial::drain`, plus a CRC32C of every framebuffer pixel
+outside the digest region. The wire format
+(`docs/visual-digest-format.md`) is single-sourced; `src/digest.rs`
+encodes, `src/renderer/mod.rs::Renderer::draw_digest` renders, and
+`scripts/digest-payload-smoke.sh` is the headless decoder reference.
+`make digest-payload-smoke` drives the full scripted scene to
+parking and asserts the decoded TLV. One bug fix during this work:
+the original `DIGEST_PAYLOAD_CAPACITY = 106` constant was labelled
+"V5/Medium" but is actually V5/Low's capacity (V5/M = 84 bytes); the
+encoder configured Medium and panicked on payloads ≥85 bytes, which
+manifested as a firmware hang under the `uefi` crate's panic
+handler. Resolved in commit `d66c7f6` by switching the encoder to
+ECC Low to match the constant.
+
 **Display-mode keystrokes** (all three phases complete). Keys `'1'`–`'6'`
 switch the GOP framebuffer to fixed resolutions (640×480, 800×600,
 1024×768, 1280×720, 1280×1024, 1920×1080); key `'0'` walks every mode

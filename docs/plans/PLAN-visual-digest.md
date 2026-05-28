@@ -235,9 +235,9 @@ letting them drift.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Region + QR encoder | [PLAN-visual-digest-phase-01-region.md](PLAN-visual-digest-phase-01-region.md) | Code complete (commits 55844a5 through 2611f43); manual cross-mode check pending |
-| 2. Ring-buffer payload + framebuffer hash | [PLAN-visual-digest-phase-02-payload.md](PLAN-visual-digest-phase-02-payload.md) | Code complete (commits 818d5f4 through 6b62da2); scripted-scene smoke deferred to follow-up due to a headless-GOP second-read-back bug |
-| 3. Repaint integration, format spec, closeout | [PLAN-visual-digest-phase-03-closeout.md](PLAN-visual-digest-phase-03-closeout.md) | Not started |
+| 1. Region + QR encoder | [PLAN-visual-digest-phase-01-region.md](PLAN-visual-digest-phase-01-region.md) | Complete (commits 55844a5 through 2611f43) |
+| 2. Ring-buffer payload + framebuffer hash | [PLAN-visual-digest-phase-02-payload.md](PLAN-visual-digest-phase-02-payload.md) | Complete (commits 818d5f4 through d66c7f6). The "deferred scripted-scene smoke" hedge in the original closeout was downstream of the QR-capacity bug now fixed in d66c7f6; the smoke drives to parking. |
+| 3. Repaint integration, format spec, closeout | [PLAN-visual-digest-phase-03-closeout.md](PLAN-visual-digest-phase-03-closeout.md) | Complete (this closeout) |
 
 ### Phase 1 sketch — region and QR encoder
 
@@ -444,37 +444,37 @@ Phase-2-specific checks:
 
 This plan is complete when:
 
-- [ ] A QR digest renders in a fixed region at every GOP
+- [x] A QR digest renders in a fixed region at every GOP
       mode the harness supports (640×480 through
       1920×1080), without colliding with the logo, boot
       transcript, bootloader scene rows, or mode-switch
       toast.
-- [ ] The digest payload reflects the ring buffer's last N
+- [x] The digest payload reflects the ring buffer's last N
       events, refreshed at the scene-loop cadence and
       paused for the duration of `bootloader::run`.
-- [ ] The digest is rendered cell-by-cell per Principle 6
+- [x] The digest is rendered cell-by-cell per Principle 6
       (one `BltOp::BufferToVideo` per QR module).
-- [ ] The displayed QR carries a CRC32C of the framebuffer's
-      non-digest pixels, computed either via
-      `BltOp::VideoToBuffer` read-back or the incremental
-      fallback, with the choice documented inline.
-- [ ] `Scene::repaint` repaints the digest correctly after
+- [x] The displayed QR carries a CRC32C of the framebuffer's
+      non-digest pixels, computed via path A
+      (`BltOp::VideoToBuffer` read-back) with the choice
+      documented inline.
+- [x] `Scene::repaint` repaints the digest correctly after
       every mode switch.
-- [ ] `make digest-smoke` boots, captures, decodes the QR
-      via `zbarimg`, and asserts the payload matches the
-      scripted ring buffer for that run.
-- [ ] `docs/visual-digest-format.md` documents the wire
+- [x] `make digest-payload-smoke` boots, captures, decodes
+      the QR via `zbarimg`, and asserts the payload matches
+      the scripted ring buffer for that run. (Note: the
+      target was renamed from `digest-smoke` when the two
+      smoke targets collapsed to one — see commit 07aadfa.)
+- [x] `docs/visual-digest-format.md` documents the wire
       format with a row per `Event` variant.
-- [ ] DESIGN.md, ARCHITECTURE.md, AGENTS.md, README.md
+- [x] DESIGN.md, ARCHITECTURE.md, AGENTS.md, README.md
       all reflect the implemented state.
-- [ ] `pre-commit run --all-files` clean at every commit.
-- [ ] Existing `make screenshot`, `make qemu`,
+- [x] `pre-commit run --all-files` clean at every commit.
+- [x] Existing `make screenshot`, `make qemu`,
       `make spice`, `make spice-ryll`, `make release-verify`
-      all continue to work (the screenshot's reference
-      image will change because the digest is now part of
-      the parking screen — that update is expected and
-      committed alongside Phase 3).
-- [ ] `docs/plans/index.md` master-plans row updated to
+      all continue to work; the `make screenshot` reference
+      image was refreshed in Phase 3 to carry the new QR.
+- [x] `docs/plans/index.md` master-plans row updated to
       *Complete* with the commit range; `docs/plans/order.yml`
       contains the entry added at plan-creation time.
 

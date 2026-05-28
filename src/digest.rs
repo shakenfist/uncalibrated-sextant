@@ -1,7 +1,5 @@
 //! TLV encoder for the visual on-screen digest. The wire format is
-//! documented in
-//! `docs/plans/PLAN-visual-digest-phase-02-payload.md` (and, after
-//! phase 3, in `docs/visual-digest-format.md`).
+//! documented in `docs/visual-digest-format.md`.
 //!
 //! The encoder is a pure function over a `RingBuffer<256>` snapshot,
 //! a monotonic frame counter, and an injected `framebuffer_hash`. It
@@ -15,14 +13,10 @@
 //!   is the integrity check; QR ECC handles transport corruption, so
 //!   no second CRC of the payload bytes is emitted.
 //!
-//! Capacity is fixed at 106 bytes (QR Version 5 / ECC Medium byte-
-//! mode). Records that would overflow are dropped — the encoder takes
-//! the *most-recent-N* events that fit, walking the ring buffer in
+//! Capacity is fixed at 106 bytes (QR Version 5 / ECC Low byte-mode).
+//! Records that would overflow are dropped — the encoder takes the
+//! *most-recent-N* events that fit, walking the ring buffer in
 //! reverse and emitting in chronological (forward) order.
-//!
-//! No callers in step 2a; step 2b wires `Scene::refresh_digest` to
-//! invoke `encode`, and step 2c replaces the placeholder
-//! `framebuffer_hash` with the real value.
 
 use crc::{Crc, CRC_32_ISCSI};
 

@@ -19,11 +19,14 @@ independent channels, both fed from a single in-memory ring buffer:
   QR", "report current framebuffer hash", "advance to next scene")
   and consumes structured events ("key_down scancode=0x1e at t=…").
   Transport pattern lifted from [instar](../instar/).
-- **Visual (on-screen digest)** — periodic QR or compact text
-  rendered into the framebuffer, encoding the last N events from the
-  same ring buffer. A SPICE-client-side harness screenshots the
-  client's view and decodes this. This validates the *display path*
-  (does the client see what the guest drew?), independent of serial.
+- **Visual (on-screen digest)** — a QR code rendered into the
+  bottom-right of the framebuffer at every scene-phase boundary and
+  on every mode switch, encoding the last N events from the same
+  ring buffer plus a CRC32C of the rest of the framebuffer.
+  A SPICE-client-side harness screenshots the client's view and
+  decodes this. Validates the *display path* (does the client see
+  what the guest drew?), independent of serial. Wire format:
+  [docs/visual-digest-format.md](docs/visual-digest-format.md).
 
 Because both channels read from the same ring buffer, they should
 agree by construction. Divergence between "what serial says arrived"

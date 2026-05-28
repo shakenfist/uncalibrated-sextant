@@ -624,6 +624,13 @@ impl Scene {
                 renderer.draw_line(SYSTEM_ONLINE_TEXT, system_online_row);
             }
         }
+
+        // Restore the digest QR after a framebuffer wipe. Carve-out
+        // matches refresh_digest's own assertion: skip while the
+        // bootloader owns the screen, since it owns its own rows.
+        if !matches!(self.repaint_state, RepaintState::BootingBootloader { .. }) {
+            self.refresh_digest(renderer);
+        }
     }
 
     /// Compute and render the on-screen digest reflecting the

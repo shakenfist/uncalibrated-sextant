@@ -249,6 +249,16 @@ confirm `type=` lines are present in the serial log — the script
 fails if the drain produced nothing, making it a full end-to-end
 smoke test.
 
+The visual half of the two-channel test architecture landed via
+PLAN-visual-digest (phases 1–3). `Renderer::draw_digest` renders a
+QR Version 5 / ECC Low code into the bottom-right of the
+framebuffer; `Scene::refresh_digest` rebuilds the payload from the
+ring buffer at every scene-phase boundary and inside `Scene::repaint`
+after a mode switch. The wire format (10-byte header + TLV body +
+CRC32C trailer over the non-digest framebuffer pixels) is
+documented in [docs/visual-digest-format.md](docs/visual-digest-format.md);
+`make digest-payload-smoke` is the headless decoder reference.
+
 The remaining components still to be built:
 
 - **gRPC-over-serial transport** — structured Ryll-facing event
@@ -258,8 +268,6 @@ The remaining components still to be built:
 - **Simple Pointer Protocol** — mouse / pointer input collector
   pushing into the ring buffer. Deferred; the Booting handshake
   currently requires a keypress only.
-- **On-screen digest** — QR or compact-text rendering of buffered
-  events. Future phase.
 
 Style enforcement is declared in `.pre-commit-config.yaml` and
 executed by `scripts/check-rust.sh`, which reuses the Phase 1 Docker

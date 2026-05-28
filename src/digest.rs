@@ -25,77 +25,58 @@ use crate::event::{BootloaderChoice, Event, Phase, RingBuffer};
 /// Magic identifier for a SeXtant DiGest payload. Four exact bytes at
 /// offset 0 let a host-side decoder say "this PNG contains a digest"
 /// with very high confidence against random noise.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_MAGIC: [u8; 4] = *b"SXDG";
 
 /// Schema version of the wire format. Bump when a field shape changes
 /// or a TLV type is repurposed; adding a new TLV type does not require
 /// a bump (TLV's whole point).
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_SCHEMA_VERSION: u8 = 0x01;
 
 /// TLV type tag: `Event::Keypress`. Parallel to `serial::drain`'s
 /// `type=keypress` discriminator.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const TAG_KEYPRESS: u8 = 0x01;
 /// TLV type tag: `Event::LineRendered`. Parallel to
 /// `serial::drain`'s `type=line` discriminator.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const TAG_LINE_RENDERED: u8 = 0x02;
 /// TLV type tag: `Event::SceneTransition`. Parallel to
 /// `serial::drain`'s `type=transition` discriminator.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const TAG_SCENE_TRANSITION: u8 = 0x03;
 /// TLV type tag: `Event::BootloaderDecision`. Parallel to
 /// `serial::drain`'s `type=bootloader_decision` discriminator.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const TAG_BOOTLOADER_DECISION: u8 = 0x04;
 /// TLV type tag: `Event::PasteReceived`. Parallel to
 /// `serial::drain`'s `type=paste` discriminator.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const TAG_PASTE_RECEIVED: u8 = 0x05;
 /// TLV type tag: `Event::BootloaderTimeout`. Parallel to
 /// `serial::drain`'s `type=bootloader_timeout` discriminator.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const TAG_BOOTLOADER_TIMEOUT: u8 = 0x06;
 /// TLV type tag: `Event::ModeSwitch`. Parallel to `serial::drain`'s
 /// `type=mode_switch` discriminator.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const TAG_MODE_SWITCH: u8 = 0x07;
 /// TLV type tag: `Event::ModeCycle`. Parallel to `serial::drain`'s
 /// `type=mode_cycle` discriminator.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const TAG_MODE_CYCLE: u8 = 0x08;
 
 /// Wire discriminant for `Phase::Awaiting`.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const PHASE_AWAITING: u8 = 0x00;
 /// Wire discriminant for `Phase::Booting`.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const PHASE_BOOTING: u8 = 0x01;
 /// Wire discriminant for `Phase::Parked`.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const PHASE_PARKED: u8 = 0x02;
 
 /// Wire discriminant for `BootloaderChoice::Retry`.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const CHOICE_RECOVER: u8 = 0x00;
 /// Wire discriminant for `BootloaderChoice::Ignore`.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const CHOICE_IGNORE: u8 = 0x01;
 /// Wire discriminant for `BootloaderChoice::Abort`.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const CHOICE_ANYWAY: u8 = 0x02;
 
 /// Fixed header length: magic (4) + version (1) + frame counter (4) +
 /// record count (1).
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_HEADER_LEN: usize = 10;
 /// Fixed trailer length: framebuffer hash (4).
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_TRAILER_LEN: usize = 4;
 /// Header + trailer overhead = 14 bytes.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_FIXED_OVERHEAD: usize = DIGEST_HEADER_LEN + DIGEST_TRAILER_LEN;
 
 /// Maximum QR Version 5 / ECC Low byte-mode capacity, in bytes.
@@ -105,7 +86,6 @@ pub(crate) const DIGEST_FIXED_OVERHEAD: usize = DIGEST_HEADER_LEN + DIGEST_TRAIL
 /// change one, you must change the other. `Renderer::draw_digest`'s
 /// doc comment carries the wider rationale (ECC trade-off, mismatch
 /// hazard, panic-on-oversize behaviour).
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_PAYLOAD_CAPACITY: usize = 106;
 
 // Pin the capacity to the V5/Low spec figure. `QrCodeEcc::Low` in
@@ -131,7 +111,6 @@ const _: () = assert!(
 pub(crate) const CRC32C: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 /// Outcome of an `encode` call.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 #[derive(Debug)]
 pub(crate) enum EncodeError {
     /// Caller supplied a buffer smaller than `DIGEST_PAYLOAD_CAPACITY`.
@@ -151,7 +130,6 @@ pub(crate) enum EncodeError {
 /// **not** tied to Rust's default enum discriminants (which the
 /// compiler may renumber if variants are reordered, added, or
 /// removed). Reorder `Phase` freely; the wire still works.
-#[allow(dead_code)] // Consumed transitively by encode() in step 2b.
 fn phase_wire(phase: Phase) -> u8 {
     match phase {
         Phase::Awaiting => PHASE_AWAITING,
@@ -163,7 +141,6 @@ fn phase_wire(phase: Phase) -> u8 {
 /// Map a `BootloaderChoice` to its wire discriminant. Same stability
 /// rationale as `phase_wire`: the match is the contract, not Rust's
 /// default reprs.
-#[allow(dead_code)] // Consumed transitively by encode() in step 2b.
 fn choice_wire(choice: BootloaderChoice) -> u8 {
     match choice {
         BootloaderChoice::Retry => CHOICE_RECOVER,
@@ -185,7 +162,6 @@ fn choice_wire(choice: BootloaderChoice) -> u8 {
 /// | `BootloaderTimeout`  | 10    |
 /// | `ModeSwitch`         | 18    |
 /// | `ModeCycle`          | 15    |
-#[allow(dead_code)] // Consumed transitively by encode() in step 2b.
 fn size_of_record(event: &Event) -> usize {
     match event {
         Event::Keypress { .. } => 14,
@@ -216,7 +192,6 @@ fn size_of_record(event: &Event) -> usize {
 /// Pure function: no IO, no clock reads, no `&mut Renderer`. Step 2c
 /// computes `framebuffer_hash` against the framebuffer's non-digest
 /// pixels and passes it in.
-#[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) fn encode(
     ring: &RingBuffer<256>,
     frame_counter: u32,
@@ -298,7 +273,6 @@ pub(crate) fn encode(
 /// the new write position. Errors with `InternalOverflow` if the
 /// caller's bookkeeping was off (should never happen — `encode`
 /// validates the total length up front).
-#[allow(dead_code)] // Consumed transitively by encode() in step 2b.
 fn write_record(
     event: &Event,
     out: &mut [u8; DIGEST_PAYLOAD_CAPACITY],

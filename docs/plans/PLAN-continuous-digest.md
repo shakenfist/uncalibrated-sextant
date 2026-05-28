@@ -86,62 +86,60 @@ firmware exposes — display state today, plus last N keypresses
 today, plus last N USB-redir packets / pointer events / audio
 frames / whatever channel comes next.
 
-Three concrete consequences of that re-framing, each of which
+Two concrete consequences of that re-framing, each of which
 the current implementation gets wrong:
 
-1. **Wrong hash domain.** Path A hashes what the server *read
-   back* from its own framebuffer. The use case is "did the
-   client render what the server intended" — a client-side
-   wedge in the SPICE display pipeline (or a SPICE-client paint
-   bug, or a ryll capture-pipeline race) doesn't perturb the
-   server's read-back. Path A catches GOP-level wedges; it does
-   not catch the wedges the QR is supposed to flag.
-2. **Wrong cadence.** Three snapshots per boot is far too coarse
+1. **Wrong cadence.** Three snapshots per boot is far too coarse
    for bisection. If the client wedges on line 12 of the boot
    transcript, the QR after BOOTING completes is the first
    evidence and the human debugger has 30+ lines of suspect
    territory. Per-line refresh (operator confirmation) bisects
    to a single line.
-3. **Wrong coverage.** The bootloader carve-out and the
+2. **Wrong coverage.** The bootloader carve-out and the
    AWAITING-has-no-QR gap are the highest-diagnostic-value
    surfaces in the whole scene: the bootloader paste sequence
    is the entire point of the locked-bootloader test (does the
    client correctly deliver Ctrl+Alt+V?), and a pre-keypress
    display wedge in AWAITING is currently completely invisible.
 
-The phase-2 rationale for path A and for the bootloader
-carve-out was sound *under PLAN-visual-digest's original
-framing*. Under the operator's clarified framing, both choices
-flip: path A's "concentrates cost into three calls" becomes a
-liability because we want frequent refreshes; the bootloader
-carve-out's "could mask paste-correctness bugs" was about a
-ring-buffer-event refresh racing the paste record, which is a
-solvable per-refresh-point ordering question, not a reason to
-blind the channel through the whole sub-state-machine.
+The hash domain (path A: read the framebuffer back via
+`BltOp::VideoToBltBuffer` and CRC32C the non-digest bytes) is
+not on the list of things to change. Path A's read-back
+captures exactly what SPICE transmits to the client, which is
+the right reference point for "did the client render what the
+server emitted." The phase-2 rejection of per-paint refresh was
+framed in terms of cost per *paint*; under per-line refresh
+the cost arithmetic is ~7 ms × ~30 lines ≈ 210 ms over a 6 s
+boot transcript — a +3.5% overhead that does not warrant
+inventing an intent-CRC + shadow-framebuffer mechanism to
+avoid. Phase 1 measurement confirms the number before we
+commit; if it is much worse than expected, that is the
+fall-back decision point.
+
+The bootloader carve-out's "could mask paste-correctness bugs"
+was about a ring-buffer-event refresh racing the paste
+record. That is a solvable per-refresh-point ordering
+question, not a reason to blind the channel through the whole
+sub-state-machine.
 
 The headless GOP read-back bug
 ([PLAN-headless-readback-bug.md](PLAN-headless-readback-bug.md))
 was ultimately a QR-capacity-constant bug, not a real
-read-back problem; the read-back path is functional. We are
-choosing to retire it from the client-comparison oracle role
-because it's the wrong oracle, not because it's broken.
+read-back problem; the read-back path is functional, which is
+why this plan can lean on it more heavily without rebuilding
+it.
 
 ## Mission and problem statement
 
-Convert the visual digest from a display-only,
-phase-boundary, server-side-read-back snapshot into a
-continuous, multi-channel, intent-based state oracle suitable
+Convert the visual digest from a phase-boundary, display-only
+snapshot into a continuous, multi-channel state oracle suitable
 for client-side wedge detection across every I/O surface this
-firmware exposes — present and future.
+firmware exposes — present and future. The hash domain stays
+on path A (framebuffer read-back); the changes are cadence,
+coverage, and payload structure.
 
 By the end of this plan:
 
-- **Intent hashing (path B).** The renderer maintains a running
-  CRC32C of every byte it asks the framebuffer to display, in
-  the non-digest region. This is the "what the server intended
-  to put on screen" hash, computed at write time, no read-back
-  required. The hash is exposed to `Scene::refresh_digest` via
-  a getter on `Renderer`.
 - **Per-line refresh.** The boot-transcript runner refreshes
   the digest after every painted line. `Scene::run_awaiting`
   refreshes on every cursor blink transition (the only visible
@@ -160,27 +158,33 @@ By the end of this plan:
   `PasteReceived` event is recorded and *before* the validation
   branch, so the QR observed by the test driver reflects the
   paste the firmware actually received).
+- **Path A measured under the new cadence.** Phase 1 records
+  the per-call cost of `crc32c_framebuffer_excluding_digest`
+  in practice and the cumulative overhead over the full boot
+  transcript. If the overhead is materially worse than the
+  estimated ~210 ms (~3.5% of a 6 s transcript), phase 1 is
+  the bail-out point: either thin the cadence (refresh every
+  other line, batch at sub-phase boundaries) or revisit an
+  intent-CRC / shadow-framebuffer alternative as a follow-up
+  plan.
 - **Multi-channel TLV.** The wire format grows new TLV record
   types for per-channel rolling hashes — one record per
   channel, each carrying a 4-byte CRC32C of that channel's
-  event stream since boot. Initial channels: display intent,
-  keypresses, bootloader decisions, paste records, mode
-  switches. Channel IDs in a documented reserved range so
-  future USB-redir / pointer / audio channels slot in without
-  a schema bump (TLV's whole point).
+  event stream since boot. Initial channels: keypresses,
+  bootloader decisions, paste records, mode switches. The
+  display channel continues to be represented by the existing
+  framebuffer-hash trailer (path A). Channel IDs in a
+  documented reserved range so future USB-redir / pointer /
+  audio channels slot in without a schema bump (TLV's whole
+  point).
 - **Capacity strategy decided and documented.** With per-line
   refresh, the question of whether the QR carries raw recent
   events plus rolling-hash summaries, or rolling-hash
   summaries only, has to be resolved before encoding hits the
-  V5/L wall. Default below; revisit in phase 3.
+  V5/L wall. Default below; revisit in phase 2.
 - **AWAITING gains a QR from the moment chrome is painted.**
   Pre-keypress wedge is a real failure mode and is currently
   invisible.
-- **Path A is retired from the client-comparison oracle role.**
-  `crc32c_framebuffer_excluding_digest` and its read-back
-  remain available as an optional server-side self-check
-  (Phase 4 decides whether to keep, gate, or delete), but
-  refresh no longer depends on them.
 - **Docs reflect the actual role.** `DESIGN.md` is updated to
   describe the digest as the substitute for the never-built
   second-serial gRPC channel, not just "the visual half".
@@ -199,7 +203,7 @@ Out of scope for this plan:
   work that introduces them, hooking into the channel ID range
   this plan reserves).
 - ryll-side decoder changes. ryll's decoder ignores unknown
-  TLV types today (verify in phase 4) so the new records
+  TLV types today (verify in phase 3) so the new records
   don't break its current parser; whether ryll uses them for
   assertions is a ryll-side decision tracked in their repo.
 
@@ -209,47 +213,18 @@ Defaults below are strong but worth confirming or iterating at
 the relevant phase. Capture changes inline rather than letting
 them drift.
 
-- **Hash domain: pure intent, or intent + opt-in read-back?**
-  **Default: pure intent for the client-comparison oracle;
-  keep `crc32c_framebuffer_excluding_digest` as a separate,
-  opt-in self-check (e.g. `make digest-readback-check`) that
-  is run in CI but not on every boot.** Path A caught the
-  headless-readback wedge once; the diagnostic capability is
-  worth preserving even though it's no longer the primary
-  oracle. If phase 1 measurement shows path A is unused
-  anywhere downstream and adds maintenance weight without
-  carrying it, delete it instead.
-
-- **Where the intent CRC lives.** **Default: a `u32` field on
-  `Renderer`, updated inside every helper that issues a
-  `BltOp::BufferToVideo` or `BltOp::VideoFill` against the
-  non-digest region.** Alternatives — computing it from the
-  event log at refresh time, or maintaining it in a wrapper
-  type — either lose fidelity (the event log doesn't carry
-  pixel-level intent) or add an abstraction that doesn't earn
-  its keep. The renderer already owns the BLT call sites; it
-  is the natural home.
-
-- **What counts as "non-digest region" for path B.** The
-  existing read-back path uses a right-anchored rectangle
-  computed at runtime. Path B has to use the same rectangle
-  or the two hashes can never be compared, which matters if
-  we keep path A as a self-check. **Default: factor the
-  rectangle calculation out of
-  `crc32c_framebuffer_excluding_digest` into a shared helper,
-  call it from both paths.**
-
-- **Per-line refresh cost.** Path B updates the CRC at write
-  time (negligible per-byte cost), but each refresh still
-  encodes a QR and issues ~37×37 = ~1400 BLT calls. Per the
-  visual-digest phase-2 measurement note, QR encode is a few
-  ms and the BLT calls are individually cheap but accumulate.
-  **No firm default; phase 1 should measure end-to-end paint
-  budget impact on the boot transcript pacing (200 ms per
-  line today) and decide whether to refresh every line, every
-  other line, or batch refreshes at sub-phase boundaries
-  (e.g. after each `BOOT_SCRIPT` group).** Per-line is the
-  preference; only step back if the measurement forces it.
+- **Per-refresh cost under per-line cadence.** Each refresh
+  runs `crc32c_framebuffer_excluding_digest` (~7 ms at 3 GHz
+  per the phase-2 measurement note) plus a QR encode (a few
+  ms) plus ~37×37 ≈ 1400 BLT calls to paint the modules. The
+  estimated per-boot overhead is ~210 ms over a 6 s transcript
+  (~3.5%). **Default: refresh every line; phase 1 measures
+  the actual end-to-end overhead and confirms it stays under
+  ~5% of transcript wall-clock before locking the cadence
+  in.** If measurement comes in materially worse, the fall-back
+  is every-other-line or sub-phase batching; the further
+  fall-back (a shadow-framebuffer intent CRC) is deferred to a
+  follow-up plan.
 
 - **AWAITING refresh trigger: blink-tick or state-change-only?**
   **Default: every blink transition (twice per second).** The
@@ -272,7 +247,7 @@ them drift.
   refresh on each countdown tick during the visible
   shutdown sequence. The retry attempt-counter rendering and
   the cleared-and-re-rendered prompt should each carry a
-  refresh. Phase 2 should walk `bootloader.rs` end-to-end and
+  refresh. Phase 1 should walk `bootloader.rs` end-to-end and
   produce the final list.
 
 - **TLV capacity strategy.** With multi-channel rolling
@@ -292,15 +267,17 @@ them drift.
   *which* event diverged. The screen real estate is
   available; spend it.
 
-- **What channels exist on day one.** **Default: display
-  intent, keypresses, bootloader decisions, paste records,
-  mode switches.** These are exactly the event variants the
-  firmware records today (`src/event.rs`'s `Event` enum)
-  plus the new display-intent CRC. Channel IDs: 0x01–0x0F
-  reserved for these "boot-time core" channels; 0x10–0x1F
-  reserved for future SPICE-channel-derived state (USB redir,
-  pointer, audio, smartcard, clipboard, etc); 0x20+
-  available for whatever else later.
+- **What channels exist on day one.** **Default: keypresses,
+  bootloader decisions, paste records, mode switches.** These
+  are exactly the non-display event variants the firmware
+  records today (`src/event.rs`'s `Event` enum). The display
+  channel continues to be the existing framebuffer-hash
+  trailer (path A); it is *not* duplicated as a per-channel
+  rolling hash. Channel IDs: 0x01–0x0F reserved for these
+  "boot-time core" channels; 0x10–0x1F reserved for future
+  SPICE-channel-derived state (USB redir, pointer, audio,
+  smartcard, clipboard, etc); 0x20+ available for whatever
+  else later.
 
 - **Per-channel hash domain.** **Default: CRC32C of the
   concatenated TLV-encoded event records for that channel,
@@ -311,16 +288,6 @@ them drift.
   stays diverged, which is the right semantic for "flag that
   something went wrong" — last-N would mask transient
   divergences once they scroll out of the window.
-
-- **Display-intent hash: full-history or current-state?**
-  **Default: current-state — the running CRC of "what's on
-  screen right now" (i.e. the path-B intent hash described
-  above).** A full-history-of-paint-operations hash would
-  diverge on benign repaints (mode switch, scene transition)
-  that don't represent client-side wedges. The
-  current-state hash diverges if and only if the visible
-  framebuffer differs, which is the client-comparison
-  semantic.
 
 - **Bootloader scene's clock_ms vs digest_frame_counter.** The
   existing frame counter is incremented inside
@@ -342,78 +309,61 @@ them drift.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Intent hash (path B) + retire path A from refresh | PLAN-continuous-digest-phase-01-intent-hash.md | Not started |
-| 2. Refresh cadence + coverage (per-line, AWAITING, bootloader carve-out replacement) | PLAN-continuous-digest-phase-02-cadence.md | Not started |
-| 3. Multi-channel TLV + capacity decision (V5/L vs V10/L) | PLAN-continuous-digest-phase-03-multi-channel.md | Not started |
-| 4. Docs, decoder coordination, closeout | PLAN-continuous-digest-phase-04-closeout.md | Not started |
+| 1. Refresh cadence + coverage (per-line, AWAITING, bootloader carve-out replacement) + path-A cost measurement | PLAN-continuous-digest-phase-01-cadence.md | Not started |
+| 2. Multi-channel TLV + capacity decision (V5/L vs V10/L) | PLAN-continuous-digest-phase-02-multi-channel.md | Not started |
+| 3. Docs, decoder coordination, closeout | PLAN-continuous-digest-phase-03-closeout.md | Not started |
 
-### Phase 1 sketch — intent hash (path B)
+### Phase 1 sketch — refresh cadence + coverage
 
-Replace the framebuffer-hash source under `Scene::refresh_digest`
-without changing cadence or coverage. The QR's *value* changes
-(intent CRC instead of read-back CRC) but its *position and
-frequency* don't. This is the smallest unit that proves path B
-is viable on its own; if measurement shows per-paint CRC cost
-is prohibitive (it shouldn't be — it's a per-byte XOR — but
-measure), this phase is the bail-out point.
+Distribute `refresh_digest` calls to the right places so the QR
+becomes a continuously-available oracle, remove the bootloader
+carve-out, and measure path A's actual cost under the new
+cadence. No wire-format changes; the QR payload schema stays
+exactly as it is today, only its *value* updates more often.
 
 Sub-steps roughly:
 
-- Add a `u32` field on `Renderer` initialised to the CRC32C of
-  an empty stream.
-- Add a private helper on `Renderer` that updates the running
-  CRC with a byte slice (the same bytes about to be BLTed).
-- Wire the helper into every BLT call site that touches the
-  non-digest region. Audit `draw_glyph`, `draw_cursor_glyph`,
-  `clear_cell`, `clear_row`, `clear`, `draw_text_bitmap`'s
-  per-cell BLT, and the digest's own write-back (which is
-  excluded from the hash).
-- Factor the non-digest-rectangle math out of
-  `crc32c_framebuffer_excluding_digest` into a shared helper.
-- Make `Scene::refresh_digest` read the intent CRC instead of
-  calling `crc32c_framebuffer_excluding_digest`.
-- Keep `crc32c_framebuffer_excluding_digest` and add an opt-in
-  `make digest-readback-check` target (or feature flag) that
-  exercises path A as a self-check for the GOP store-then-read
-  invariant. Phase 4 decides its long-term fate.
-- Measure per-line paint budget impact and record in the phase
-  closeout. If the cost is non-trivial, this is the place to
-  notice before phase 2 amplifies it.
-
-### Phase 2 sketch — refresh cadence + coverage
-
-With path B in place, refresh becomes cheap enough to do
-frequently. This phase distributes refresh calls to the right
-places and removes the bootloader carve-out.
-
+- Measure first: instrument `Scene::refresh_digest` to record
+  wall-clock per call (and break down read-back vs encode vs
+  paint), boot the existing scene unmodified, and record
+  baseline numbers. This is the calibration data the bail-out
+  decision below depends on.
 - Per-line refresh in the boot transcript runner.
 - AWAITING refresh on every cursor blink transition.
 - PARKED refresh on the SYSTEM ONLINE line and on every blink
   transition.
 - Walk `bootloader.rs` and add the refresh-points listed in the
-  "Bootloader refresh-point placement" open question. Remove the
-  `assert!` in `Scene::refresh_digest`.
+  *Bootloader refresh-point placement* open question. Remove
+  the `assert!` in `Scene::refresh_digest`.
 - Update `RepaintState::BootingBootloader`'s repaint flow to
   also refresh on completion (it can no longer be the
   unreachable case it currently models).
 - Update `Scene::repaint` if necessary so a mode switch
   mid-bootloader-scene doesn't leave the QR stale.
+- Re-measure under the new cadence and record the cumulative
+  overhead in the phase closeout. **Bail-out criterion:** if
+  the overhead exceeds ~5% of transcript wall-clock, do not
+  proceed to phase 2 with this cadence; instead, either thin
+  to every-other-line / sub-phase batching (and re-measure) or
+  open a follow-up plan for an intent-CRC / shadow-framebuffer
+  alternative.
 - Re-run `make digest-payload-smoke` after each refresh-site
   addition to confirm no regression in the existing format.
 
-### Phase 3 sketch — multi-channel TLV
+### Phase 2 sketch — multi-channel TLV
 
 Extend the TLV format with rolling-hash records, decide the
 capacity strategy, and bump the QR version if (b) wins.
 
 - Add TLV tag constants for per-channel rolling hashes
-  (`TAG_HASH_DISPLAY`, `TAG_HASH_KEYPRESS`, ...) in the
-  reserved 0x10–0x1F range — or pick a different range now if
-  that conflicts with anticipated SPICE-channel state tags.
+  (`TAG_HASH_KEYPRESS`, `TAG_HASH_BOOTLOADER_DECISION`, ...)
+  in the reserved 0x10–0x1F range — or pick a different range
+  now if that conflicts with anticipated SPICE-channel state
+  tags. The display channel uses the existing framebuffer-hash
+  trailer; no new tag for it.
 - Maintain a per-channel CRC32C in `Scene` (or in a new
   `ChannelHashes` struct) updated every time an event is
-  pushed to the ring buffer. Display-intent hash comes from
-  the renderer per phase 1.
+  pushed to the ring buffer.
 - Encoder writes the rolling-hash records before raw event
   records, so they survive capacity truncation.
 - If the V10/L bump is taken: update `DIGEST_PAYLOAD_CAPACITY`,
@@ -428,7 +378,7 @@ capacity strategy, and bump the QR version if (b) wins.
   TLV-compatible, but the channel ID conventions are new
   semantics worth signalling).
 
-### Phase 4 sketch — docs, decoder coordination, closeout
+### Phase 3 sketch — docs, decoder coordination, closeout
 
 - Update `DESIGN.md`'s framing of the on-screen digest.
 - Rewrite the `docs/visual-digest-format.md` TLV catalogue.
@@ -439,8 +389,6 @@ capacity strategy, and bump the QR version if (b) wins.
   (read ryll-side code; do not push changes there). If it
   doesn't, this becomes a coordination note for the ryll repo
   rather than a blocker.
-- Decide path A's long-term fate (keep as opt-in self-check,
-  gate behind a feature flag, or delete) and execute.
 - Update `docs/plans/index.md` row for this plan to *Complete*
   and link the final commit range.
 
@@ -467,35 +415,31 @@ The workflow is:
 5. **Commit** once the management session is satisfied.
 
 Use `isolation: "worktree"` for risky / experimental sub-agents.
-Phases 1 and 3 are good candidates for worktree isolation
-(touching the renderer's hot path and the wire format
-respectively). Phase 2's coverage changes are localised enough
-to land in the main tree.
+Phase 2 (wire-format changes, possible QR-version bump) is the
+best candidate for worktree isolation. Phase 1's coverage
+changes and phase 3's doc edits are localised enough to land
+in the main tree.
 
 ### Planning effort
 
 The master plan itself is at **high effort** (this document).
 Phase plans should specify effort per step. Recommended:
 
-- **Phase 1** — medium-to-high for planning. The intent-hash
-  plumbing is mechanical once the audit of BLT call sites is
-  complete, but the audit is the part that has to be right.
-  Implementation steps mostly medium; the audit is high.
-- **Phase 2** — medium for planning. Refresh-point placement
+- **Phase 1** — medium for planning. Refresh-point placement
   in `bootloader.rs` requires careful walking but the criteria
-  are well-defined in this plan.
-- **Phase 3** — high for planning. The capacity decision
+  are well-defined in this plan. The measurement sub-step is
+  mechanical.
+- **Phase 2** — high for planning. The capacity decision
   cross-cuts encoder, renderer, decoder, and downstream parsers;
   the channel-ID conventions are an API surface we should not
   re-cut later.
-- **Phase 4** — low for planning, medium for execution. The doc
+- **Phase 3** — low for planning, medium for execution. The doc
   updates are mostly mechanical but cross-reference several
   source files.
 
-**Model choice:** Phase 1's BLT-call-site audit and phase 3's
-wire-format design should use **opus**. Most implementation
-steps can use **sonnet** with a detailed brief. No phase
-warrants haiku.
+**Model choice:** Phase 2's wire-format design should use
+**opus**. Most implementation steps can use **sonnet** with a
+detailed brief. No phase warrants haiku.
 
 ### Management session review checklist
 
@@ -505,10 +449,10 @@ After each sub-agent completes, verify:
       (read them, don't trust the summary).
 - [ ] No unrelated files were modified.
 - [ ] `pre-commit run --all-files` is green.
-- [ ] `make digest-payload-smoke` still passes (after phase 3,
+- [ ] `make digest-payload-smoke` still passes (after phase 2,
       with updated assertions).
 - [ ] The QR is visually present in the expected places
-      (screenshot via `make screenshot` after phase 2).
+      (screenshot via `make screenshot` after phase 1).
 - [ ] Per-line refresh has not visibly slowed the boot transcript
       (the 200 ms per-line pacing should still feel deliberate,
       not labored).
@@ -530,21 +474,18 @@ because the following statements will be true:
   boot transcript, on every cursor blink transition in AWAITING
   and PARKED, and at every visible state change inside the
   bootloader scene.
-* The QR's framebuffer hash reflects "what the server intended
-  to paint" (path B intent CRC), not "what the server read back
-  from its own framebuffer" (path A).
-* The QR carries per-channel rolling hashes for display intent,
-  keypresses, bootloader decisions, paste records, and mode
-  switches, in addition to the raw recent events it already
-  carries.
+* The QR's framebuffer hash continues to come from path A
+  (`crc32c_framebuffer_excluding_digest`); phase 1's
+  measurement confirms the per-line cadence stays under ~5% of
+  transcript wall-clock.
+* The QR carries per-channel rolling hashes for keypresses,
+  bootloader decisions, paste records, and mode switches, in
+  addition to the raw recent events it already carries.
 * `make digest-payload-smoke` passes against the new format.
 * `pre-commit run --all-files` is green.
 * `DESIGN.md`, `ARCHITECTURE.md`, `AGENTS.md`, and
   `docs/visual-digest-format.md` reflect the new framing,
   cadence, and TLV record types.
-* Path A (`crc32c_framebuffer_excluding_digest`) is either
-  retired or moved behind an opt-in self-check target;
-  `Scene::refresh_digest` no longer depends on it.
 
 ### Future work
 

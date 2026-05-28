@@ -16,6 +16,7 @@ extern crate alloc;
 
 use alloc::format;
 
+use core::arch::x86_64::_rdtsc;
 use core::time::Duration;
 
 use crate::bootloader;
@@ -23,6 +24,67 @@ use crate::cursor::CursorState;
 use crate::event::{Event, Phase, RingBuffer};
 use crate::renderer::Renderer;
 use crate::serial;
+
+/// Read the x86 Time Stamp Counter.
+///
+/// Used exclusively for relative elapsed-time measurement (per-call
+/// cost of `Scene::refresh_digest`). The TSC is calibrated once at
+/// scene start against a known `uefi::boot::stall` duration to
+/// recover `ticks_per_ms`; see `Scene::run`.
+///
+/// # Safety
+/// `_rdtsc` is a single instruction with no memory side effects.
+/// Marked `unsafe` by the compiler because it is a raw CPU
+/// intrinsic; wrapped here so call sites can be safe.
+#[inline]
+fn read_tsc() -> u64 {
+    // SAFETY: _rdtsc is a single-instruction read with no memory
+    // side effects. Available on any x86-64 target (UEFI only runs
+    // on x86-64 in this project).
+    unsafe { _rdtsc() }
+}
+
+/// Per-call timing statistics for `Scene::refresh_digest`.
+///
+/// Accumulated across every call during a boot run and emitted as a
+/// single summary line on the serial drain just before ACPI shutdown.
+/// Provides the raw numbers needed to evaluate the phase-1 bail-out
+/// criterion (total refresh wall-clock ≤ 5% of transcript duration).
+pub(crate) struct RefreshStats {
+    /// Number of `refresh_digest` calls recorded so far.
+    pub(crate) count: u32,
+    /// Sum of TSC tick deltas across all calls.
+    pub(crate) total_ticks: u64,
+    /// Maximum single-call TSC tick delta.
+    pub(crate) max_ticks: u64,
+    /// Ring of the most recent 256 per-call tick counts.
+    pub(crate) sample_ring: [u64; 256],
+    /// Next write index into `sample_ring` (wraps mod 256).
+    sample_head: usize,
+}
+
+impl RefreshStats {
+    const fn new() -> Self {
+        Self {
+            count: 0,
+            total_ticks: 0,
+            max_ticks: 0,
+            sample_ring: [0u64; 256],
+            sample_head: 0,
+        }
+    }
+
+    /// Record one `refresh_digest` call that took `ticks` TSC counts.
+    fn record(&mut self, ticks: u64) {
+        self.count += 1;
+        self.total_ticks = self.total_ticks.saturating_add(ticks);
+        if ticks > self.max_ticks {
+            self.max_ticks = ticks;
+        }
+        self.sample_ring[self.sample_head % 256] = ticks;
+        self.sample_head += 1;
+    }
+}
 
 /// Poll interval between read_key calls during cursor-blink loops.
 pub(crate) const POLL_MS: u64 = 50;
@@ -282,6 +344,13 @@ pub struct Scene {
     /// Starts at `0`; the first `refresh_digest` call increments to `1`.
     /// Wraps at `u32::MAX` (136 years at 1 Hz — not a concern).
     digest_frame_counter: u32,
+    /// TSC ticks per millisecond, calibrated once at `Scene::run` entry.
+    /// Zero until calibration completes; `refresh_digest` uses it to
+    /// convert tick deltas to microseconds for the serial drain summary.
+    ticks_per_ms: u64,
+    /// Per-call timing statistics for `refresh_digest`. Accumulated
+    /// across the full boot run; emitted by `serial::drain`.
+    refresh_stats: RefreshStats,
 }
 
 impl Scene {
@@ -295,6 +364,8 @@ impl Scene {
             repaint_state: RepaintState::Chrome,
             toast: None,
             digest_frame_counter: 0,
+            ticks_per_ms: 0,
+            refresh_stats: RefreshStats::new(),
         }
     }
 
@@ -302,6 +373,15 @@ impl Scene {
     ///
     /// Never returns; ACPI shutdown exits the process.
     pub fn run(&mut self, renderer: &mut Renderer) -> ! {
+        // Calibrate TSC: read before and after a known 100 ms stall to
+        // recover ticks-per-millisecond for the refresh-cost summary.
+        // Stall is tight (no key polling) so the only elapsed time is
+        // the firmware's `stall` call itself.
+        let tsc_before = read_tsc();
+        uefi::boot::stall(Duration::from_millis(100));
+        let tsc_after = read_tsc();
+        self.ticks_per_ms = (tsc_after.saturating_sub(tsc_before)) / 100;
+
         Self::draw_chrome(renderer);
         self.run_awaiting(renderer);
         self.refresh_digest(renderer);
@@ -312,7 +392,7 @@ impl Scene {
         self.run_parked(renderer, next_row);
         self.refresh_digest(renderer);
 
-        serial::drain(&self.ring);
+        serial::drain(&self.ring, &self.refresh_stats, self.ticks_per_ms);
 
         uefi::runtime::reset(
             uefi::runtime::ResetType::SHUTDOWN,
@@ -659,6 +739,9 @@ impl Scene {
             !matches!(self.repaint_state, RepaintState::BootingBootloader { .. }),
             "refresh_digest called during bootloader scene — carve-out violated",
         );
+
+        let tsc_start = read_tsc();
+
         self.digest_frame_counter = self.digest_frame_counter.wrapping_add(1);
 
         // Path A: read the framebuffer back via
@@ -683,6 +766,9 @@ impl Scene {
                 // via a log.
             }
         }
+
+        let tsc_end = read_tsc();
+        self.refresh_stats.record(tsc_end.saturating_sub(tsc_start));
     }
 
     /// Draw a toast on the bottom row naming the applied mode.

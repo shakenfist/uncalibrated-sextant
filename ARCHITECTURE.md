@@ -259,6 +259,22 @@ CRC32C trailer over the non-digest framebuffer pixels) is
 documented in [docs/visual-digest-format.md](docs/visual-digest-format.md);
 `make digest-payload-smoke` is the headless decoder reference.
 
+**Measurement scaffold (PLAN-continuous-digest phase 1a).** Every
+call to `Scene::refresh_digest` is bracketed by reads of the x86
+TSC (`core::arch::x86_64::_rdtsc`, stable on Rust 1.88 / the
+x86-64-unknown-uefi target). A `RefreshStats` struct on `Scene`
+accumulates the per-call tick count into `count`, `total_ticks`,
+`max_ticks`, and a 256-entry `sample_ring`. At `Scene::run` entry,
+before any rendering, the TSC is calibrated against a single
+`uefi::boot::stall(100 ms)` call to produce `ticks_per_ms` (stored
+on `Scene`; zero until calibrated). At drain time, `serial::drain`
+receives `&RefreshStats` and `ticks_per_ms`, sorts a stack copy of
+the sample ring, and emits one final CRLF-terminated line:
+`type=refresh_stats count=<n> total_ms=<n> mean_us=<n> max_us=<n>
+p99_us=<n>`. This line is after all per-event lines and before ACPI
+shutdown; it is not part of the QR TLV payload and does not affect
+`make digest-payload-smoke`.
+
 The remaining components still to be built:
 
 - **gRPC-over-serial transport** — structured Ryll-facing event

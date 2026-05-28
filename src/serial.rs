@@ -15,6 +15,7 @@ use core::fmt::Write;
 use uefi::proto::console::serial::Serial;
 
 use crate::event::{Event, RingBuffer};
+use crate::scene::RefreshStats;
 
 /// Briefly acquire the Serial protocol, hand it to `f`, drop it on exit.
 fn with_serial<F>(f: F)
@@ -61,12 +62,20 @@ where
     });
 }
 
-/// One-shot plain-text dump of the event ring buffer.
+/// One-shot plain-text dump of the event ring buffer followed by a
+/// `refresh_stats` summary line.
 ///
 /// Called immediately before ACPI shutdown. Format: one line per event,
 /// CRLF-terminated, chronological order. Stable lowercase tags for the
 /// `type=` and phase fields so Ryll's future parser can match literally.
-pub fn drain<const N: usize>(ring: &RingBuffer<N>) {
+///
+/// The final line is always:
+/// ```text
+/// type=refresh_stats count=<n> total_ms=<n> mean_us=<n> max_us=<n> p99_us=<n>
+/// ```
+/// When `ticks_per_ms` is zero (calibration was skipped or overflowed),
+/// all derived values are emitted as zero.
+pub fn drain<const N: usize>(ring: &RingBuffer<N>, stats: &RefreshStats, ticks_per_ms: u64) {
     with_serial(|serial| {
         for event in ring.iter() {
             match event {
@@ -145,5 +154,35 @@ pub fn drain<const N: usize>(ring: &RingBuffer<N>) {
                 }
             }
         }
+
+        // Emit the refresh_stats summary line. All time values are zero
+        // when the call count is zero or the calibration returned zero.
+        let (total_ms, mean_us, max_us, p99_us) = if stats.count == 0 || ticks_per_ms == 0 {
+            (0u64, 0u64, 0u64, 0u64)
+        } else {
+            let total_ms = stats.total_ticks / ticks_per_ms;
+            let mean_us = (stats.total_ticks * 1000) / (ticks_per_ms * stats.count as u64);
+            let max_us = stats.max_ticks * 1000 / ticks_per_ms;
+
+            // p99 from the sample ring. Sort a stack copy; only the first
+            // min(count, 256) slots are valid.
+            let valid = (stats.count as usize).min(256);
+            let mut ring_copy = [0u64; 256];
+            ring_copy[..valid].copy_from_slice(&stats.sample_ring[..valid]);
+            let valid_slice = &mut ring_copy[..valid];
+            valid_slice.sort_unstable();
+            let p99_idx = (valid * 99 / 100).saturating_sub(1);
+            let p99_ticks = valid_slice[p99_idx];
+            let p99_us = p99_ticks * 1000 / ticks_per_ms;
+
+            (total_ms, mean_us, max_us, p99_us)
+        };
+
+        let count = stats.count;
+        let _ = writeln!(
+            serial,
+            "type=refresh_stats count={count} total_ms={total_ms} \
+             mean_us={mean_us} max_us={max_us} p99_us={p99_us}\r",
+        );
     });
 }

@@ -96,6 +96,19 @@ invokes directly.
 
 ## Most recently landed
 
+**Measurement scaffold (PLAN-continuous-digest phase 1a).** Every
+`Scene::refresh_digest` call is now TSC-bracketed via
+`core::arch::x86_64::_rdtsc` (stable on Rust 1.88 /
+x86-64-unknown-uefi). `Scene` gains a `RefreshStats` field that
+accumulates `count`, `total_ticks`, `max_ticks`, and a 256-entry
+sample ring. `ticks_per_ms` is calibrated once at `Scene::run` entry
+against a known 100 ms `uefi::boot::stall`. The serial drain emits
+one additional trailing line —
+`type=refresh_stats count=<n> total_ms=<n> mean_us=<n> max_us=<n> p99_us=<n>`
+— providing the raw material for the phase-1 bail-out evaluation.
+No cadence changes; the three existing refresh sites in `Scene::run`
+are untouched.
+
 **Visual on-screen digest** (all three phases complete). A QR Version 5
 / ECC Low code is rendered in the bottom-right of the framebuffer at
 every scene-phase boundary and on every mode switch. It encodes a TLV

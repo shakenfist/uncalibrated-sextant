@@ -3,6 +3,24 @@
 Parent plan:
 [PLAN-visual-digest.md](PLAN-visual-digest.md).
 
+## 2026-05-28 erratum
+
+This plan refers throughout to "QR Version 5 / ECC Medium
+byte-mode capacity = 106 bytes". That label is wrong: per the
+QR Code 2005 spec, Table 7, the V5 byte-mode capacity by ECC
+level is L=106, M=84, Q=60, H=46. 106 is the V5/**L** number,
+not V5/M. The encoder configured `QrCodeEcc::Medium`, so any
+payload of ≥85 bytes panicked in `encode_binary` with
+`DataTooLong` and the `uefi` panic handler hung the firmware
+— this is the bug that
+[PLAN-headless-readback-bug.md](PLAN-headless-readback-bug.md)
+attributed to GOP read-back interaction.
+
+The fix on 2026-05-28 kept the 106-byte capacity and dropped
+the encoder to `QrCodeEcc::Low`. Read claims of "V5/Medium"
+below as "V5/Low" — the capacity arithmetic (header + records
++ trailer) still adds up, only the ECC budget changed.
+
 ## Outcome
 
 **Status: Code complete (commits 818d5f4, 8bef81d, 6221301,
@@ -10,7 +28,9 @@ Parent plan:
 scripted-scene smoke is degraded to AWAITING-only because of
 a second-read-back-breaks-subsequent-writes bug in OVMF/QEMU's
 GOP path under headless `-display none`. Deferred to a
-follow-up plan.**
+follow-up plan.** *(See erratum above: the "read-back" framing
+was wrong; root cause was a constant mislabelled V5/M instead
+of V5/L. Resolved 2026-05-28.)*
 
 ### What Phase 2 actually delivered
 

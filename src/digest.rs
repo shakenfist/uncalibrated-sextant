@@ -105,8 +105,13 @@ pub(crate) const DIGEST_TRAILER_LEN: usize = 4;
 #[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_FIXED_OVERHEAD: usize = DIGEST_HEADER_LEN + DIGEST_TRAILER_LEN;
 
-/// Maximum QR Version 5 / ECC Medium byte-mode capacity, in bytes.
-/// Derived from QR Code 2005 spec, Table 7.
+/// Maximum QR Version 5 / ECC Low byte-mode capacity, in bytes.
+/// Derived from QR Code 2005 spec, Table 7: V5 byte-mode capacity by
+/// ECC level is L=106, M=84, Q=60, H=46. The renderer's
+/// `draw_digest` configures the encoder for V5/Low to match; if you
+/// change one, you must change the other. `Renderer::draw_digest`'s
+/// doc comment carries the wider rationale (ECC trade-off, mismatch
+/// hazard, panic-on-oversize behaviour).
 #[allow(dead_code)] // Consumed by Scene::refresh_digest in step 2b.
 pub(crate) const DIGEST_PAYLOAD_CAPACITY: usize = 106;
 

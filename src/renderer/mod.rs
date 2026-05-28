@@ -453,16 +453,24 @@ impl Renderer {
     /// `(DIGEST_QR_MODULES + 2 * DIGEST_QR_BORDER) = 45` modules square,
     /// yielding 2025 BltOp calls per invocation.
     ///
-    /// The encoder is pinned to Version 5 and ECC level Medium. Version
-    /// 5 / Medium holds 84 bytes of byte-mode payload, ample for the
-    /// planned ring-buffer digests. Medium tolerates ~15% of modules
-    /// being unreadable, which leaves headroom for the future
-    /// CRT-scruff overlay without sacrificing capacity unnecessarily.
+    /// The encoder is pinned to Version 5 and ECC level Low. Per the
+    /// QR Code 2005 spec, Table 7, the byte-mode capacity for V5 by ECC
+    /// level is L=106, M=84, Q=60, H=46. We pick L to match
+    /// `DIGEST_PAYLOAD_CAPACITY = 106`; Medium would cap the payload at
+    /// 84 bytes and any larger encoded record set would panic in
+    /// `encode_binary` below with `DataTooLong`. The ECC level here and
+    /// the capacity constant in `digest.rs` MUST agree — the
+    /// `const _: () = assert!(...)` block in `digest.rs` enforces this
+    /// at compile time. If you change one, change the other.
+    ///
+    /// Low ECC tolerates only ~7% of modules being unreadable (vs. ~15%
+    /// for Medium), so the future CRT-scruff overlay needs to keep its
+    /// damage budget conservative.
     ///
     /// Oversized payloads panic — `draw_digest` is a debug / smoke
     /// instrument and silent truncation would corrupt the decoded data
     /// without warning. Callers must size payloads to the Version 5 /
-    /// Medium capacity.
+    /// Low capacity (106 bytes).
     ///
     /// `#[cfg_attr(not(feature = "digest-smoke"), allow(dead_code))]`
     /// is the transitive root suppression for the `DIGEST_*` constants
@@ -480,7 +488,7 @@ impl Renderer {
         let mut out_buf = [0u8; DIGEST_QR_BUFFER_LEN];
         assert!(
             payload.len() <= data_and_temp.len(),
-            "digest payload exceeds Version 5 / Medium buffer",
+            "digest payload exceeds Version 5 buffer",
         );
         data_and_temp[..payload.len()].copy_from_slice(payload);
 
@@ -488,13 +496,13 @@ impl Renderer {
             &mut data_and_temp,
             payload.len(),
             &mut out_buf,
-            QrCodeEcc::Medium,
+            QrCodeEcc::Low,
             DIGEST_QR_VERSION_V, // min version: pinned to 5
             DIGEST_QR_VERSION_V, // max version: pinned to 5
             None,                // mask: auto
-            false,               // boost_ecl: keep ECC at exactly Medium
+            false,               // boost_ecl: keep ECC at exactly Low
         )
-        .expect("digest payload exceeds Version 5 / Medium capacity");
+        .expect("digest payload exceeds Version 5 / Low capacity (106 bytes)");
 
         const SIZE: usize = DIGEST_QR_MODULES;
         const BORDER: usize = DIGEST_QR_BORDER;

@@ -4,24 +4,65 @@ Standalone plan, investigation pending.
 
 ## Status
 
-**Status: Open. Surfaced during PLAN-visual-digest phase 2
-step 2d (commit `6b62da2`). Operator confirmation under
-`make spice-ryll-digest` then revealed the bug also
-reproduces under interactive SPICE — the parking screen
-carries no QR despite the post-`run_booting`
-`refresh_digest` call firing. The Phase 2 closeout's
-"production reality works fine" claim was an incorrect
-extrapolation from an AWAITING-screen observation; the
-bug affects the production path too. The 2026-05-27
-investigation session falsified the read-back hypothesis
-entirely: path B (incremental hash, no read-back at all)
-shows the same symptom, and diagnostic checkpoints prove
-the binary wedges between `run_booting` returning and
-`run_parked` painting — `refresh_digest` is downstream
-of the actual bug, not its source. The plan title is
-now misleading but kept for continuity; the actual bug
-is "framebuffer paints silently stop working at the
-run_booting → run_parked seam".**
+**Status: RESOLVED on 2026-05-28. The bug was a one-line
+mislabelling, not a read-back interaction.**
+
+`src/digest.rs:111` declared
+`DIGEST_PAYLOAD_CAPACITY = 106` with the comment
+"QR Version 5 / ECC Medium byte-mode capacity". Per the
+QR Code 2005 spec, Table 7, V5 byte-mode capacity is in
+fact L=106, M=84, Q=60, H=46 — 106 is the V5/**L**
+figure. `src/renderer/mod.rs` separately requested
+`QrCodeEcc::Medium` in the `encode_binary` call, so any
+encoded payload of ≥85 bytes returned `DataTooLong`,
+which the `.expect(...)` on the result then panicked on,
+and the `uefi` crate's panic handler hung the firmware.
+Because `refresh_digest` is called immediately after
+`run_booting` returns (which prints
+"OPERATOR ASSISTANCE REQUIRED" as its last line), the
+hang appeared as a phase-specific wedge at that exact
+on-screen position.
+
+The fix landed on 2026-05-28 was to keep the 106-byte
+capacity and drop the encoder to `QrCodeEcc::Low` —
+preserving the planned record budget at the cost of QR
+error-correction headroom. The doc comments at both
+sites now cross-reference each other and explicitly cite
+the spec table cell.
+
+**Investigation post-mortem.** Most of the body of this
+plan documents falsified hypotheses (path-A/B split,
+GOP read-back interaction, `BltOp` flush behaviour, the
+`run_booting → run_parked` seam, partial remediations
+A–F). None of these were load-bearing on the actual
+bug — `BltOp::VideoToBltBuffer` worked correctly the
+whole time; `crc32c_framebuffer_excluding_digest`
+behaved as designed; the wedge had nothing to do with
+seam-painting. The plan kept reaching for firmware-level
+explanations because the symptom was a hang and the
+hang's on-screen position kept pointing at the same
+seam. Two earlier-than-warranted commits ("A is a
+partial fix", "bug also reproduces under SPICE")
+locked in the read-back framing and made the actual
+root cause — a constant mislabelled in `digest.rs` —
+invisible to the search.
+
+The bisection that found the real cause was: take a
+minimal scene that wedges, replace `refresh_digest`
+with `renderer.draw_digest(&[0u8; N])` for varying N,
+binary-search N. The wedge threshold landed exactly at
+N=85, which matches the V5/M=84 spec entry to the byte.
+That precision was what finally rotated the search away
+from firmware behaviour and onto the constant. The
+broader lesson: when a symptom's position is
+suggestive, the falsification bar for the suggested
+explanation should be unusually high, and bisecting
+*on the bytes flowing through the suspect function*
+(not on the call graph above it) gets to a precise
+threshold faster.
+
+The body of this plan is kept verbatim below as a
+historical record of the false-trail investigation.
 
 ## Prompt
 

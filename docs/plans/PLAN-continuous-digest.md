@@ -267,6 +267,55 @@ them drift.
   *which* event diverged. The screen real estate is
   available; spend it.
 
+- **Why QR and not a denser code (JAB, HCCB, colour-QR)?**
+  **Default: stay on QR; do not consider polychrome or
+  higher-density 2D codes for this work or for foreseeable
+  follow-up.** The density argument for JAB Code
+  (ISO/IEC 23634:2022, ~3–4× QR density at 8 colours) is real
+  but is dominated by four pipeline-specific costs:
+  - *Colour fidelity through SPICE.* The digest's whole value
+    proposition is byte-exact round-trip from server
+    framebuffer to client capture. QXL+SPICE negotiates pixel
+    format with the client and can compress lossy under
+    bandwidth pressure; multicolour regions are where those
+    optimisations bite hardest. Monochrome QR survives this
+    pipeline trivially; a polychrome code would need
+    end-to-end palette accuracy across QXL, SPICE wire format,
+    and client-side rendering — and the failure mode for "the
+    digest decodes wrong because of colour drift" looks
+    identical to "the digest decodes wrong because of an
+    actual client-side wedge", which destroys the oracle.
+  - *Decoder ecosystem.* `zbarimg`, every Rust QR crate, and
+    every test-driver QR pipeline decodes QR. JAB has
+    essentially one decoder — Fraunhofer's reference C library
+    `libjabcode` (LGPL 2.1). Ryll would either bind to it
+    (LGPL has dynamic-linking implications for ryll's
+    distribution) or port from scratch. Our spec already says
+    ryll's decoder is its own problem; we shouldn't actively
+    make it harder.
+  - *Rust no_std encoder availability.* No no_std Rust JAB
+    encoder is known to exist. The firmware would have to
+    pre-compute encodings (defeats per-line refresh), call out
+    to C (drags in `libjabcode` plus an allocator we don't
+    currently need), or port the encoder ourselves — a
+    multi-week side quest for a no_std target.
+  - *Capacity headroom we do not need.* V10/L (this plan's
+    bump) carries 213 bytes, sufficient for ~10 channels'
+    worth of rolling hashes plus ~25 raw events. QR scales to
+    V20/L = 666 bytes or V40/L = 2953 bytes before running
+    out of the QR design space entirely. The density wall is
+    far away.
+
+  **Escape hatch if we ever hit a real capacity wall:**
+  multi-frame QR (rotating slices carrying channel-slice +
+  frame index, decoder reassembles over a few captures) gives
+  effectively unlimited capacity at any QR version and works
+  with the existing decoder ecosystem. That is a cheaper
+  escape than switching encoding, and the multi-frame option
+  would also be available if we ever did switch to JAB —
+  switching encoding first does not unlock anything we cannot
+  unlock more cheaply by staying on QR.
+
 - **What channels exist on day one.** **Default: keypresses,
   bootloader decisions, paste records, mode switches.** These
   are exactly the non-display event variants the firmware

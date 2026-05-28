@@ -327,7 +327,33 @@ To be populated by steps 1b and 1g.
 
 ### Baseline (3 refresh sites)
 
-(Populated by step 1b.)
+Captured against the existing 3-refresh-site cadence (commit
+8814fab) via `make digest-payload-smoke`. The smoke drives a
+scripted scene from AWAITING through the bootloader paste flow
+to PARKED, with first event at t=1750 and final keypress at
+t=15500 (≈13.75 s of scene timeline).
+
+```
+type=refresh_stats count=4 total_ms=22 mean_us=5671 max_us=5786 p99_us=5655
+```
+
+Notes:
+- `count=4` matches the four existing call sites:
+  `run_awaiting`'s pre-blink call plus the three
+  scene-phase-boundary calls in `Scene::run`.
+- Mean ~5.7 ms / max ~5.8 ms is consistent with the parent
+  plan's ~7 ms read-back estimate.
+- `total_ms=22` over a ~13.75 s scripted transcript is
+  ~0.16% overhead — well under the 5% bail-out budget, but
+  this is the *baseline* with only 4 refreshes. Step 1g
+  re-measures under per-line cadence (~30+ refreshes).
+- p99 with N=4 samples is mathematically weak (the formula
+  yields ~75th percentile for small N) and is recorded for
+  completeness only; the bail-out criterion uses total_ms.
+- The smoke script also rushes pacing (keypresses delivered
+  faster than a human would); a real interactive boot would
+  show a larger transcript denominator and therefore a
+  smaller overhead ratio.
 
 ### Post-change (per-line cadence + bootloader + blink)
 

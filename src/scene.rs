@@ -280,11 +280,7 @@ pub struct Scene {
     toast: Option<ToastState>,
     /// Monotonic per-boot counter for the on-screen visual digest.
     /// Starts at `0`; the first `refresh_digest` call increments to `1`.
-    /// Wraps at `u32::MAX` (136 years at 1 Hz — not a concern). Phase 3
-    /// will make the refresh path unconditional; phase 2 still gates the
-    /// only consumer of this field behind `cfg(feature = "digest-smoke")`,
-    /// so the field carries an attribute to match.
-    #[cfg(feature = "digest-smoke")]
+    /// Wraps at `u32::MAX` (136 years at 1 Hz — not a concern).
     digest_frame_counter: u32,
 }
 
@@ -298,7 +294,6 @@ impl Scene {
             clock_ms: 0,
             repaint_state: RepaintState::Chrome,
             toast: None,
-            #[cfg(feature = "digest-smoke")]
             digest_frame_counter: 0,
         }
     }
@@ -309,15 +304,12 @@ impl Scene {
     pub fn run(&mut self, renderer: &mut Renderer) -> ! {
         Self::draw_chrome(renderer);
         self.run_awaiting(renderer);
-        #[cfg(feature = "digest-smoke")]
         self.refresh_digest(renderer);
 
         let next_row = self.run_booting(renderer);
-        #[cfg(feature = "digest-smoke")]
         self.refresh_digest(renderer);
 
         self.run_parked(renderer, next_row);
-        #[cfg(feature = "digest-smoke")]
         self.refresh_digest(renderer);
 
         serial::drain(&self.ring);
@@ -378,18 +370,11 @@ impl Scene {
 
         self.repaint_state = RepaintState::Awaiting;
 
-        // One-shot digest refresh under the digest-smoke feature so the
-        // `make digest-smoke` headless smoke (which holds in AWAITING and
-        // never advances the scene) has a real TLV-encoded QR to
-        // screendump and decode. Parallel to the three outer-loop
-        // `refresh_digest` call sites in `Scene::run` — those fire at
-        // phase boundaries after the runners return, but this smoke
-        // never reaches them because `blink_until_key` below blocks
-        // until the operator presses space. Phase 3 makes the digest
-        // refresh unconditional and this one-shot can fold into the
-        // outer-loop path; for now it preserves the fast-and-
-        // deterministic shape of the AWAITING-only smoke.
-        #[cfg(feature = "digest-smoke")]
+        // Paint the digest before blocking on the first keypress so the
+        // AWAITING screen carries a QR. The outer-loop `refresh_digest`
+        // call sites in `Scene::run` fire at phase boundaries after the
+        // runners return, which is too late for the AWAITING screen
+        // itself — `blink_until_key` below holds here indefinitely.
         self.refresh_digest(renderer);
 
         self.blink_until_key(renderer, CURSOR_COL, CURSOR_ROW, |scene| {
@@ -662,7 +647,6 @@ impl Scene {
     /// read-back path which the project otherwise never touches. See
     /// `PLAN-visual-digest-phase-02-payload.md` *Outcome* for the full
     /// A/B numbers and rationale.
-    #[cfg(feature = "digest-smoke")]
     fn refresh_digest(&mut self, renderer: &mut Renderer) {
         assert!(
             !matches!(self.repaint_state, RepaintState::BootingBootloader { .. }),

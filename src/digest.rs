@@ -24,7 +24,6 @@
 //! invoke `encode`, and step 2c replaces the placeholder
 //! `framebuffer_hash` with the real value.
 
-#[cfg(feature = "digest-smoke")]
 use crc::{Crc, CRC_32_ISCSI};
 
 use crate::event::{BootloaderChoice, Event, Phase, RingBuffer};
@@ -117,12 +116,8 @@ pub(crate) const DIGEST_PAYLOAD_CAPACITY: usize = 106;
 
 /// CRC32C algorithm (Castagnoli polynomial, as used in iSCSI, SCTP,
 /// and Btrfs). The `crc` crate computes this with a const table at
-/// zero runtime cost beyond the per-byte XOR.
-///
-/// Consumed by `Renderer::crc32c_framebuffer_excluding_digest`, which
-/// is itself gated behind the `digest-smoke` feature; the const is
-/// gated to match so no-feature builds do not trip `dead_code`.
-#[cfg(feature = "digest-smoke")]
+/// zero runtime cost beyond the per-byte XOR. Consumed by
+/// `Renderer::crc32c_framebuffer_excluding_digest`.
 pub(crate) const CRC32C: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 /// Outcome of an `encode` call.

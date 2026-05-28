@@ -1,52 +1,25 @@
 #!/usr/bin/env bash
 # Headless full-scene smoke test for the on-screen visual digest.
 #
-# DIVERGENCE FROM PLAN-visual-digest-phase-02-payload.md step 2d:
-# the plan asks this script to drive the full scripted scene through
-# to parking, screendump the parked frame, and assert frame counter
-# >= 3 / records >= 1 on the post-run_booting digest refresh. In
-# practice the digest-smoke binary cannot complete that scripted
-# drive under the headless QMP harness this script must use:
-#
-#   - With the production binary, scripts/screenshot.sh runs the
-#     same key sequence (space -> bootloader -> i -> paste -> enter)
-#     and reaches the parking screen in ~8 s; serial::drain emits 59
-#     events and the QR painted by the (non-existent) refresh_digest
-#     calls would be on the parking screen if the feature were
-#     compiled in.
-#   - With `--features digest-smoke` compiled in, the same key
-#     sequence and timings reach BOOT_SCRIPT_POST's
-#     `EMERGENCY SAFE BOOT COMPLETE.` line but the post-run_booting
-#     refresh_digest(frame=3) call paints no QR onto the parking
-#     screen — `BltOp::BufferToVideo` writes after the path-A
-#     `BltOp::VideoToBltBuffer` read-back appear to silently fail
-#     under QEMU's default GOP driver. Path A's correctness check
-#     in step 2c-measure was performed against OVMF+QXL on
-#     `make spice-ryll`, where this interaction was not exercised.
-#
-# Until that binary-level interaction is fixed (a follow-on to step
-# 2c-impl, not scope for 2d), this smoke holds in AWAITING the same
-# way `digest-smoke.sh` does and asserts a richer set of TLV
-# invariants than the existing smoke does:
+# Drives the scripted scene through to the parking screen, screendumps
+# the parked frame, decodes the QR with zbarimg, and asserts the TLV
+# payload is well-formed:
 #
 #   - magic == "SXDG"
 #   - schema version == 1
-#   - frame counter is a parseable u32 LE
-#   - record count (u8) parses
+#   - frame counter parses as u32 LE and is >= 3 (one refresh_digest
+#     call inside run_awaiting paints the AWAITING-screen QR;
+#     run_awaiting then blocks until space, after which the
+#     post-run_awaiting and post-run_booting calls fire, painting
+#     the parking-screen QR at frame=3 before run_parked blocks on
+#     its own blink loop)
+#   - record count (u8) parses and is >= 1 (the scripted scene
+#     generates SceneTransition, LineRendered, PasteReceived, and
+#     keypress events that survive into the post-parking ring)
 #   - each record's type tag is in 0x01..=0x08, with a defensive
 #     check that the value length does not run past the body end
-#     (the body may have trailing bytes before the CRC trailer —
-#     zbarimg returns a few extra bytes past the encoded payload
-#     for QR Version 5 / Medium decodes, which the parser tolerates)
 #   - the trailing 4 bytes parse as a u32 LE CRC32C and are
 #     surfaced in the success line
-#
-# Mirrors scripts/digest-smoke.sh for QMP/OVMF/cleanup/PIL plumbing
-# verbatim; neither digest-smoke.sh nor screenshot.sh is modified by
-# this script, and a future revision can extend the key-send beat
-# (already lifted from screenshot.sh below for reference) once the
-# binary's BufferToVideo-after-VideoToBltBuffer interaction is
-# resolved.
 #
 # Usage: digest-payload-smoke.sh
 # Env:
@@ -62,7 +35,6 @@ cd "$REPO_ROOT"
 OUTPUT_PNG="${DIGEST_PAYLOAD_SMOKE_OUTPUT:-$REPO_ROOT/dist/digest-payload.png}"
 TIMEOUT="${DIGEST_PAYLOAD_SMOKE_TIMEOUT:-30}"
 
-# Tooling preflight: same set as digest-smoke.sh.
 for tool in qemu-system-x86_64 zbarimg python3; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "digest-payload-smoke: required tool not found: $tool" >&2
@@ -80,9 +52,8 @@ fi
 
 mkdir -p "$REPO_ROOT/dist" "$(dirname "$OUTPUT_PNG")"
 
-# Build a feature-aware ESP. The Makefile target rebuilds with
-# --features digest-smoke into the docker volume; mkesp.sh stages
-# whatever .efi is sitting in target/.
+# Stage the ESP image from whatever binary the most recent cargo
+# build wrote into the named docker volume.
 "$REPO_ROOT/scripts/mkesp.sh"
 
 SERIAL_LOG="$REPO_ROOT/dist/digest-payload-smoke-serial.log"
@@ -112,7 +83,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Wait for the startup banner so we know the binary reached main.
 BANNER='Hello from Uncalibrated Sextant'
 ELAPSED=0
 while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
@@ -128,10 +98,8 @@ if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
     exit 1
 fi
 
-# Hold in AWAITING (same as digest-smoke.sh — see the divergence
-# note at the top of this file for why the scripted-scene drive
-# planned in 2d is currently disabled). Let the chrome and digest
-# paint, then screendump.
+# Drive the scripted scene through AWAITING -> booting -> bootloader
+# challenge -> parking, then screendump the parked frame.
 OUTPUT_PNG="$OUTPUT_PNG" QMP_SOCK="$QMP_SOCK" python3 - <<'PY'
 import json
 import os
@@ -162,6 +130,32 @@ def send(cmd, **args):
     f.flush()
 
 
+def send_key(keys):
+    send('send-key', keys=keys)
+    recv()
+
+
+def qcode(name):
+    return {'type': 'qcode', 'data': name}
+
+
+SHIFT = qcode('shift')
+
+
+def keys_for_char(ch):
+    if ch.islower():
+        return [qcode(ch)]
+    if ch.isupper():
+        return [SHIFT, qcode(ch.lower())]
+    if ch == '{':
+        return [SHIFT, qcode('bracket_left')]
+    if ch == '}':
+        return [SHIFT, qcode('bracket_right')]
+    if ch == '_':
+        return [SHIFT, qcode('minus')]
+    raise ValueError(f'no qcode mapping for character: {ch!r}')
+
+
 greeting = recv()
 if not greeting or 'QMP' not in greeting:
     sys.stderr.write(f'unexpected QMP greeting: {greeting!r}\n')
@@ -170,14 +164,32 @@ if not greeting or 'QMP' not in greeting:
 send('qmp_capabilities')
 recv()
 
-# AWAITING settle. Mirror digest-smoke.sh exactly.
+# Beat 1: AWAITING settle, advance to boot script.
 time.sleep(1.5)
+send_key([qcode('spc')])
+
+# Beat 2: BOOT_SCRIPT_PRE + bootloader preamble, choose 'i' (ignore).
+time.sleep(4.5)
+send_key([qcode('i')])
+
+# Beat 3: blob screen settle, paste the challenge response.
+time.sleep(0.5)
+for ch in 'sextant{HELLO_OPERATOR}':
+    send_key(keys_for_char(ch))
+    time.sleep(0.03)
+send_key([qcode('ret')])
+
+# Beat 4: BOOT_PAUSE_MS + BOOT_SCRIPT_POST + parking settle.
+time.sleep(8.0)
 
 send('screendump', filename=output_png, format='png')
 resp = recv()
 if resp is None or 'error' in resp:
     sys.stderr.write(f'screendump failed: {resp!r}\n')
     sys.exit(1)
+
+# Release the parking screen so the scene drains and ACPI-shuts-down.
+send_key([qcode('spc')])
 PY
 
 if [ ! -f "$OUTPUT_PNG" ]; then
@@ -221,6 +233,17 @@ payload = proc.stdout
 if payload.endswith(b'\n'):
     payload = payload[:-1]
 
+# zbarimg's --raw still UTF-8 encodes QR byte-mode output: it
+# interprets each input byte as ISO-8859-1 then re-encodes the
+# resulting code points as UTF-8, so bytes >= 0x80 become two-byte
+# UTF-8 sequences. Reverse that to recover the original byte stream.
+try:
+    payload = payload.decode('utf-8').encode('latin-1')
+except (UnicodeDecodeError, UnicodeEncodeError) as exc:
+    sys.stderr.write('digest-payload-smoke: zbarimg output is not UTF-8/'
+                     'latin-1 round-trippable: %s\n' % exc)
+    sys.exit(1)
+
 # Tag -> human-readable name. Mirrors src/digest.rs TAG_* constants
 # and src/event.rs Event variants.
 TAG_NAMES = {
@@ -258,14 +281,31 @@ if version != 1:
     )
     sys.exit(1)
 
-# Frame counter and record count parse, but we don't assert >= 3 /
-# >= 1 because the scripted-scene drive that would populate those
-# isn't currently runnable against the digest-smoke binary — see
-# the divergence note at the top of this file. The values are
-# surfaced in the success line so a regression in the encoder shows
-# up clearly.
 frame = struct.unpack('<I', payload[5:9])[0]
 records = payload[9]
+
+# refresh_digest fires once inside run_awaiting (frame=1, AWAITING
+# QR), then post-run_awaiting (frame=2) and post-run_booting
+# (frame=3) before run_parked blocks on its own blink loop. The
+# parking-screen QR is the frame=3 one — the post-run_parked
+# refresh only fires after the operator releases the parking
+# screen, which is too late to capture here.
+if frame < 3:
+    sys.stderr.write(
+        'digest-payload-smoke: frame counter too low: got %d, expected >= 3 '
+        '(parking-screen refresh)\n' % frame
+    )
+    sys.exit(1)
+
+# The scripted drive pushes SceneTransition, LineRendered,
+# PasteReceived, and Keypress events into the ring; at least one
+# must survive into the post-parking digest.
+if records < 1:
+    sys.stderr.write(
+        'digest-payload-smoke: record count too low: got %d, expected >= 1 '
+        '(scripted drive should populate the ring)\n' % records
+    )
+    sys.exit(1)
 
 # Walk the TLV body. Bounds-check defensively so a malformed
 # payload fails with a clear error rather than crashing on a slice.
@@ -298,12 +338,6 @@ for record_idx in range(records):
         sys.exit(1)
     parsed.append((tag, length))
     offset = value_end
-
-# Body may have trailing bytes before the CRC trailer — zbarimg
-# emits a couple of QR-encoding artefact bytes after the encoded
-# payload at Version 5 / Medium. Tolerate them; the per-record
-# tag/length walk above already validated the encoded records.
-trailing_pad = body_end - offset
 
 crc = struct.unpack('<I', payload[-4:])[0]
 

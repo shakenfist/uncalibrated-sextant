@@ -1,4 +1,4 @@
-.PHONY: build clean qemu spice spice-ryll spice-ryll-digest release release-verify screenshot screenshot-modes vendor-probes digest-smoke digest-payload-smoke
+.PHONY: build clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes digest-payload-smoke
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
@@ -14,22 +14,6 @@ spice: build
 	./scripts/spice.sh dist/esp.img
 
 spice-ryll: build
-	./scripts/mkesp.sh
-	./scripts/spice-ryll.sh dist/esp.img
-
-# spice-ryll variant that rebuilds with the digest-smoke cargo feature
-# before handing off to spice-ryll.sh. Use this for manual verification
-# that the visual digest renders correctly under interactive SPICE
-# (the production observation path); plain `make spice-ryll` compiles
-# the digest call sites out entirely.
-spice-ryll-digest:
-	docker build -t uncalibrated-sextant-build:1.88.0 .
-	docker run --rm \
-	    -v "$(CURDIR)":/work \
-	    -v uncalibrated-sextant-target:/work/target \
-	    -w /work \
-	    uncalibrated-sextant-build:1.88.0 \
-	    cargo build --release --features digest-smoke
 	./scripts/mkesp.sh
 	./scripts/spice-ryll.sh dist/esp.img
 
@@ -50,38 +34,14 @@ screenshot-modes: build
 	./scripts/mkesp.sh
 	./scripts/screenshot-modes.sh
 
-# Headless QR round-trip smoke. Rebuilds with the digest-smoke cargo
-# feature (which injects a hard-coded draw_digest(b"hello") into
-# run_awaiting), boots QEMU headless, screendumps to PNG, and uses
-# zbarimg to decode + assert the payload. Requires `zbar-tools`
-# (apt install zbar-tools) on the host. Invokes cargo inside the
-# build container directly because scripts/build.sh does not yet
-# accept a --features pass-through; the production build path stays
-# on the wrapper.
-digest-smoke:
-	docker build -t uncalibrated-sextant-build:1.88.0 .
-	docker run --rm \
-	    -v "$(CURDIR)":/work \
-	    -v uncalibrated-sextant-target:/work/target \
-	    -w /work \
-	    uncalibrated-sextant-build:1.88.0 \
-	    cargo build --release --features digest-smoke
-	./scripts/digest-smoke.sh
-
-# Full-scene companion to digest-smoke. Where digest-smoke holds in
-# AWAITING and verifies the QR round-trip, this target drives the
-# scripted scene through to parking, screendumps, decodes, and asserts
-# a richer set of TLV invariants (magic + version + frame counter >= 3
-# + record count >= 1 + per-record tag validation). Surfaces the
-# trailing framebuffer CRC32C in the success line.
-digest-payload-smoke:
-	docker build -t uncalibrated-sextant-build:1.88.0 .
-	docker run --rm \
-	    -v "$(CURDIR)":/work \
-	    -v uncalibrated-sextant-target:/work/target \
-	    -w /work \
-	    uncalibrated-sextant-build:1.88.0 \
-	    cargo build --release --features digest-smoke
+# Headless full-scene smoke for the on-screen visual digest. Boots
+# QEMU headless, drives the scripted scene through to parking,
+# screendumps the parked frame, decodes the QR with zbarimg, and
+# asserts the TLV payload (magic + version + frame counter >= 3 +
+# record count >= 1 + per-record tag validation). Surfaces the
+# trailing framebuffer CRC32C in the success line. Requires
+# `zbar-tools` (apt install zbar-tools) on the host.
+digest-payload-smoke: build
 	./scripts/digest-payload-smoke.sh
 
 vendor-probes:

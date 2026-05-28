@@ -21,6 +21,14 @@ the encoder to `QrCodeEcc::Low`. Read claims of "V5/Medium"
 below as "V5/Low" — the capacity arithmetic (header + records
 + trailer) still adds up, only the ECC budget changed.
 
+Same day, the `digest-smoke` cargo feature was removed:
+`refresh_digest`, `crc32c_framebuffer_excluding_digest`, and
+`draw_digest` now run unconditionally in every build, and
+`make digest-smoke` / `make digest-payload-smoke` build from
+the same binary as `make build`. References below to
+`--features digest-smoke` and to "feature-gated" digest code
+are historical.
+
 ## Outcome
 
 **Status: Code complete (commits 818d5f4, 8bef81d, 6221301,

@@ -471,15 +471,6 @@ impl Renderer {
     /// instrument and silent truncation would corrupt the decoded data
     /// without warning. Callers must size payloads to the Version 5 /
     /// Low capacity (106 bytes).
-    ///
-    /// `#[cfg_attr(not(feature = "digest-smoke"), allow(dead_code))]`
-    /// is the transitive root suppression for the `DIGEST_*` constants
-    /// this method consumes. The `digest-smoke` cargo feature provides
-    /// the (sole) call site in `Scene::run_awaiting`; when that feature
-    /// is on, the method and its constants are reachable and the
-    /// suppression self-cleans. The suppression lives only here; the
-    /// constants themselves carry no allow attribute.
-    #[cfg_attr(not(feature = "digest-smoke"), allow(dead_code))]
     pub(crate) fn draw_digest(&mut self, payload: &[u8]) {
         // qrcodegen-no-heap's encode_binary expects the payload to sit
         // at the front of `dataandtempbuffer`, with the rest reserved
@@ -563,7 +554,6 @@ impl Renderer {
     /// boot — concentrated at scene-phase boundaries rather than
     /// smeared across every paint site, which is the property that
     /// drove the A-over-B choice.
-    #[cfg(feature = "digest-smoke")]
     pub(crate) fn crc32c_framebuffer_excluding_digest(&mut self) -> u32 {
         use crate::digest::CRC32C;
 

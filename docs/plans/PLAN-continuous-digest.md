@@ -554,6 +554,36 @@ because the following statements will be true:
   pre-encoded QR caching keyed on payload hash would amortise
   the encode cost across repeated identical payloads (rare,
   but the AWAITING blink case generates one).
+* Server-side debug logging via OVMF debugcon (I/O port 0x402)
+  + Simple File System Protocol writes to the ESP. The
+  QR-mismatch debug story today is "halt CI, dump client log,
+  step in for interactive iterative debug against a live
+  server" — iterative because the server-side perspective is
+  unavailable post-mortem. Two cheap server-side persistence
+  paths exist and aren't currently used:
+  - **Debugcon (port 0x402).** OVMF's standard debug channel.
+    A few `outb`-equivalent lines wired into a `dbg!`-style
+    macro give us streaming verbose logging captured by QEMU
+    via `-debugcon file:dist/debug.log`. Survives firmware
+    death, no protocol opens, no contention with the existing
+    serial drain. Covers every cloud we care about
+    (OpenStack, Shaken Fist, Proxmox, oVirt are all
+    QEMU-based); not portable to bare-metal UEFI or Hyper-V
+    but CI-portable is what matters here.
+  - **ESP file writes.** Heavier (Simple File System Protocol
+    open + file handle lifecycle) but writes survive in the
+    boot disk image and can be extracted post-mortem by
+    mounting `dist/uncalibrated-sextant.img`. Right shape for
+    structured snapshots at the failure moment (compressed
+    framebuffer, ring-buffer dump, refresh-stats history).
+
+  The natural split is debugcon for streaming `dbg!`-style
+  output and ESP files for structured snapshots. Worth a
+  follow-up plan once phase 1 lands — the QR oracle tells the
+  client *that* something diverged; this work would tell the
+  human investigator *what the server's side of the story was*
+  before they start iterating, collapsing the debug loop from
+  many round trips to one.
 
 ### Bugs fixed during this work
 

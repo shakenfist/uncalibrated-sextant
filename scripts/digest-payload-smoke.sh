@@ -301,6 +301,22 @@ if len(payload) < 14:
     )
     sys.exit(1)
 
+# Phase 2d truncation invariant: the encoder must respect
+# DIGEST_PAYLOAD_CAPACITY = 106 bytes (V5/L byte-mode capacity).
+# The scripted scene's bootloader paste flow generates >200 bytes of
+# event records; the encoder's newest-first selection truncates the
+# raw record block to fit. A payload exceeding 106 bytes would mean
+# either the truncation logic regressed or the QR encoder accepted an
+# over-capacity payload and silently failed to encode (qrcodegen-no-
+# heap would actually panic here, but a defensive check at the
+# decoder side surfaces the failure mode clearly).
+if len(payload) > 106:
+    sys.stderr.write(
+        'digest-payload-smoke: payload exceeds V5/L capacity '
+        '(got %d bytes, max 106)\n' % len(payload)
+    )
+    sys.exit(1)
+
 magic = payload[0:4]
 if magic != b'SXDG':
     sys.stderr.write(

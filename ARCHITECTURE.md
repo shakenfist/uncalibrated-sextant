@@ -253,10 +253,29 @@ The visual half of the two-channel test architecture landed via
 PLAN-visual-digest (phases 1–3). `Renderer::draw_digest` renders a
 QR Version 5 / ECC Low code into the bottom-right of the
 framebuffer; `Scene::refresh_digest` rebuilds the payload from the
-ring buffer at every scene-phase boundary and inside `Scene::repaint`
-after a mode switch. The wire format (10-byte header + TLV body +
-CRC32C trailer over the non-digest framebuffer pixels) is
-documented in [docs/visual-digest-format.md](docs/visual-digest-format.md);
+ring buffer and re-encodes the QR. The refresh cadence —
+substantially expanded in PLAN-continuous-digest phase 1 — is now:
+**per painted line** in the boot transcript (`play_script` calls
+`refresh_digest` after every `SceneStep` render, covering both
+`BOOT_SCRIPT_PRE` and `BOOT_SCRIPT_POST`); **on every cursor blink
+transition** in `blink_until_key` (glyph-state comparison, firing
+when `glyph != last_glyph`, which covers both AWAITING and PARKED);
+**explicitly after drawing the `SYSTEM_ONLINE_TEXT` line** in
+`run_parked`; and **inside `Scene::repaint`** after any
+framebuffer-invalidating mode switch (unconditional — the pre-phase-1
+`BootingBootloader` carve-out assert in `Scene::refresh_digest` and
+its matching guard were removed in step 1e). The locked-bootloader
+sub-state-machine holds its own refresh points: `bootloader::run`
+takes `&mut DigestRefresher` and `&mut ChannelHashes` so the
+sub-state-machine (a `BootloaderScene` helper struct) can refresh at
+every named visible-state-change site — 15+ calls covering preamble
+lines, R/I/A prompt renders, nudge, retry-dot animation, blob and
+input prompt draws, paste-echo per character, post-`PasteReceived` in
+both Correct and Wrong branches, success path, and timeout-countdown
+ticks — without holding a `&mut Scene` reference. The wire format
+(10-byte header + TLV body + CRC32C trailer over the non-digest
+framebuffer pixels) is documented in
+[docs/visual-digest-format.md](docs/visual-digest-format.md);
 `make digest-payload-smoke` is the headless decoder reference.
 
 **Multi-channel rolling hashes (PLAN-continuous-digest phase 2, steps
@@ -289,7 +308,10 @@ the sample ring, and emits one final CRLF-terminated line:
 `type=refresh_stats count=<n> total_ms=<n> mean_us=<n> max_us=<n>
 p99_us=<n>`. This line is after all per-event lines and before ACPI
 shutdown; it is not part of the QR TLV payload and does not affect
-`make digest-payload-smoke`.
+`make digest-payload-smoke`. (Subsequent phase-1 steps — 1c, 1d,
+and 1f — added many additional refresh sites; the three sites present
+at phase 1a are now a small subset of the full cadence described
+above.)
 
 The remaining components still to be built:
 

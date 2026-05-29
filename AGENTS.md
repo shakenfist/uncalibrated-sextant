@@ -112,6 +112,28 @@ hashes in the success line, and asserts CRC chaining correctness
 (bootloader_timeout == 0, keypress != 0, mode_switch == 0, mode_cycle
 == 0).
 
+**Per-line and blink-transition refresh cadence (PLAN-continuous-digest
+phase 1, steps 1c + 1d + 1f).** `play_script` now calls
+`refresh_digest` after every rendered `SceneStep` (Telemetry, Line,
+and Probe), giving per-line QR updates throughout `BOOT_SCRIPT_PRE`
+and `BOOT_SCRIPT_POST`. `blink_until_key` refreshes on every cursor
+glyph transition (byte-wise `glyph != last_glyph`, catching
+Some↔None and Same↔Different variants), which covers both AWAITING
+and PARKED continuously. `run_parked` calls `refresh_digest`
+explicitly after drawing `SYSTEM_ONLINE_TEXT`. The assert in
+`Scene::refresh_digest` and its matching `BootingBootloader`
+repaint-guard were removed (step 1e); `Scene::repaint` now
+refreshes the digest unconditionally after every framebuffer-
+invalidating mode switch. The bootloader sub-state-machine (step
+1f) received a `DigestRefresher` struct that owns the frame counter,
+TSC calibration, and refresh stats; `bootloader::run` takes
+`&mut DigestRefresher` and `&mut ChannelHashes` so the sub-state-
+machine can refresh at 15+ named visible-state-change sites — preamble
+lines, R/I/A prompt renders, nudge, retry-dot animation, blob and
+input prompt draws, paste-echo per character, post-`PasteReceived`
+in both Correct and Wrong branches, success path, and timeout-
+countdown ticks — without holding a `&mut Scene` reference.
+
 **Measurement scaffold (PLAN-continuous-digest phase 1a).** Every
 `Scene::refresh_digest` call is now TSC-bracketed via
 `core::arch::x86_64::_rdtsc` (stable on Rust 1.88 /
@@ -122,15 +144,17 @@ against a known 100 ms `uefi::boot::stall`. The serial drain emits
 one additional trailing line —
 `type=refresh_stats count=<n> total_ms=<n> mean_us=<n> max_us=<n> p99_us=<n>`
 — providing the raw material for the phase-1 bail-out evaluation.
-No cadence changes; the three existing refresh sites in `Scene::run`
-are untouched.
+(Subsequent phase-1 steps 1c, 1d, and 1f added many additional
+refresh sites beyond the three present at this stage; see the cadence
+entry above.)
 
 **Visual on-screen digest** (all three phases complete). A QR Version 5
-/ ECC Low code is rendered in the bottom-right of the framebuffer at
-every scene-phase boundary and on every mode switch. It encodes a TLV
-payload of the most-recent events from the same ring buffer that
-feeds `serial::drain`, plus a CRC32C of every framebuffer pixel
-outside the digest region. The wire format
+/ ECC Low code is rendered in the bottom-right of the framebuffer,
+refreshed at every visible state change (see the phase-1 cadence entry
+above for the full enumeration). It encodes a TLV payload of the
+most-recent events from the same ring buffer that feeds
+`serial::drain`, plus a CRC32C of every framebuffer pixel outside the
+digest region. The wire format
 (`docs/visual-digest-format.md`) is single-sourced; `src/digest.rs`
 encodes, `src/renderer/mod.rs::Renderer::draw_digest` renders, and
 `scripts/digest-payload-smoke.sh` is the headless decoder reference.

@@ -645,3 +645,395 @@ fn write_record(
     out[pos..pos + written].copy_from_slice(&buf[..written]);
     Ok(pos + written)
 }
+
+#[cfg(test)]
+mod tests {
+    //! Host-side unit tests for the pure pieces of the digest module.
+    //!
+    //! These cover the encoder regression net for `event_tlv_bytes`
+    //! (one per `Event` variant, asserting exact wire bytes) and the
+    //! CRC32C chaining math used by `ChannelHashes::extend` /
+    //! `ChannelHashes::resume_initial`. The QEMU digest-payload smoke
+    //! still gates UEFI-side behaviour; these tests localise failures
+    //! in the pure functions so a regression there doesn't masquerade
+    //! as a renderer or scene bug.
+    use super::*;
+    use crate::event::{BootloaderChoice, Event, Phase};
+
+    /// `Keypress` TLV: tag 0x01, len 0x0c, timestamp_ms LE (8),
+    /// unicode u16 LE (2), scancode u16 LE (2). Total 14 bytes.
+    #[test]
+    fn keypress_encodes_to_expected_bytes() {
+        let event = Event::Keypress {
+            unicode: 'A',
+            scancode: 0x1234,
+            timestamp_ms: 0x0102_0304_0506_0708,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let written = event_tlv_bytes(&event, &mut buf);
+        assert_eq!(written, 14);
+        assert_eq!(
+            &buf[..14],
+            &[
+                TAG_KEYPRESS,
+                0x0c, // value length: total (14) - tag/len overhead (2)
+                0x08,
+                0x07,
+                0x06,
+                0x05,
+                0x04,
+                0x03,
+                0x02,
+                0x01, // timestamp LE
+                0x41,
+                0x00, // 'A' as u16 LE
+                0x34,
+                0x12, // scancode 0x1234 LE
+            ]
+        );
+    }
+
+    /// `LineRendered` TLV: tag 0x02, len 0x0a, timestamp_ms LE (8),
+    /// row u16 LE (2). Total 12 bytes.
+    #[test]
+    fn line_rendered_encodes_to_expected_bytes() {
+        let event = Event::LineRendered {
+            row: 0x00ab,
+            timestamp_ms: 0x1122_3344_5566_7788,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let written = event_tlv_bytes(&event, &mut buf);
+        assert_eq!(written, 12);
+        assert_eq!(
+            &buf[..12],
+            &[
+                TAG_LINE_RENDERED,
+                0x0a,
+                0x88,
+                0x77,
+                0x66,
+                0x55,
+                0x44,
+                0x33,
+                0x22,
+                0x11, // timestamp LE
+                0xab,
+                0x00, // row LE
+            ]
+        );
+    }
+
+    /// `SceneTransition` TLV: tag 0x03, len 0x0a, timestamp_ms LE (8),
+    /// from u8, to u8. Total 12 bytes. Phase discriminants are matched
+    /// by `phase_wire` (Awaiting=0, Booting=1, Parked=2).
+    #[test]
+    fn scene_transition_encodes_to_expected_bytes() {
+        let event = Event::SceneTransition {
+            from: Phase::Awaiting,
+            to: Phase::Booting,
+            timestamp_ms: 0x0000_0000_0000_002a,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let written = event_tlv_bytes(&event, &mut buf);
+        assert_eq!(written, 12);
+        assert_eq!(
+            &buf[..12],
+            &[
+                TAG_SCENE_TRANSITION,
+                0x0a,
+                0x2a,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00, // timestamp LE
+                PHASE_AWAITING,
+                PHASE_BOOTING,
+            ]
+        );
+    }
+
+    /// `BootloaderDecision` TLV: tag 0x04, len 0x0d, timestamp_ms LE
+    /// (8), choice u8, attempt u32 LE. Total 15 bytes.
+    #[test]
+    fn bootloader_decision_encodes_to_expected_bytes() {
+        let event = Event::BootloaderDecision {
+            choice: BootloaderChoice::Ignore,
+            attempt: 0xdead_beef,
+            timestamp_ms: 0x0000_0000_0000_0001,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let written = event_tlv_bytes(&event, &mut buf);
+        assert_eq!(written, 15);
+        assert_eq!(
+            &buf[..15],
+            &[
+                TAG_BOOTLOADER_DECISION,
+                0x0d,
+                0x01,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00, // timestamp LE
+                CHOICE_IGNORE,
+                0xef,
+                0xbe,
+                0xad,
+                0xde, // attempt LE
+            ]
+        );
+    }
+
+    /// `PasteReceived` TLV: tag 0x05, len 0x0b, timestamp_ms LE (8),
+    /// len u16 LE, correct u8. Total 13 bytes.
+    #[test]
+    fn paste_received_encodes_to_expected_bytes() {
+        let event = Event::PasteReceived {
+            len: 0x0102,
+            correct: true,
+            timestamp_ms: 0x0000_0000_0000_0009,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let written = event_tlv_bytes(&event, &mut buf);
+        assert_eq!(written, 13);
+        assert_eq!(
+            &buf[..13],
+            &[
+                TAG_PASTE_RECEIVED,
+                0x0b,
+                0x09,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00, // timestamp LE
+                0x02,
+                0x01, // len LE
+                0x01, // correct
+            ]
+        );
+    }
+
+    /// `BootloaderTimeout` TLV: tag 0x06, len 0x08, timestamp_ms LE
+    /// (8). Total 10 bytes.
+    #[test]
+    fn bootloader_timeout_encodes_to_expected_bytes() {
+        let event = Event::BootloaderTimeout {
+            timestamp_ms: 0xffff_ffff_ffff_ffff,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let written = event_tlv_bytes(&event, &mut buf);
+        assert_eq!(written, 10);
+        assert_eq!(
+            &buf[..10],
+            &[
+                TAG_BOOTLOADER_TIMEOUT,
+                0x08,
+                0xff,
+                0xff,
+                0xff,
+                0xff,
+                0xff,
+                0xff,
+                0xff,
+                0xff, // timestamp LE
+            ]
+        );
+    }
+
+    /// `ModeSwitch` TLV: tag 0x07, len 0x10, timestamp_ms LE (8),
+    /// requested_w/h u16 LE, applied_w/h u16 LE. Total 18 bytes.
+    #[test]
+    fn mode_switch_encodes_to_expected_bytes() {
+        let event = Event::ModeSwitch {
+            requested_w: 1024,
+            requested_h: 768,
+            applied_w: 800,
+            applied_h: 600,
+            timestamp_ms: 0x0000_0000_0000_0003,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let written = event_tlv_bytes(&event, &mut buf);
+        assert_eq!(written, 18);
+        assert_eq!(
+            &buf[..18],
+            &[
+                TAG_MODE_SWITCH,
+                0x10,
+                0x03,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00, // timestamp LE
+                0x00,
+                0x04, // requested_w 1024 LE
+                0x00,
+                0x03, // requested_h 768 LE
+                0x20,
+                0x03, // applied_w 800 LE
+                0x58,
+                0x02, // applied_h 600 LE
+            ]
+        );
+    }
+
+    /// `ModeCycle` TLV: tag 0x08, len 0x0d, timestamp_ms LE (8),
+    /// count u32 LE, interrupted u8. Total 15 bytes.
+    #[test]
+    fn mode_cycle_encodes_to_expected_bytes() {
+        let event = Event::ModeCycle {
+            count: 0x0000_0007,
+            interrupted: false,
+            timestamp_ms: 0x0000_0000_0000_0005,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let written = event_tlv_bytes(&event, &mut buf);
+        assert_eq!(written, 15);
+        assert_eq!(
+            &buf[..15],
+            &[
+                TAG_MODE_CYCLE,
+                0x0d,
+                0x05,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00, // timestamp LE
+                0x07,
+                0x00,
+                0x00,
+                0x00, // count LE
+                0x00, // interrupted = false
+            ]
+        );
+    }
+
+    /// `resume_initial` must round-trip: a `Digest` resumed from a
+    /// finalized value `f` and fed zero bytes must re-finalize to
+    /// `f`. This is the algebraic identity that proves the formula
+    /// `(f ^ 0xFFFF_FFFF).reverse_bits()` correct against the
+    /// `CRC_32_ISCSI` parameters (`refin=true`, `refout=true`,
+    /// `xorout=0xFFFF_FFFF`).
+    #[test]
+    fn resume_initial_round_trips_finalized_value() {
+        // A spread of representative values: empty-stream sentinel,
+        // a small one, a typical 32-bit value, and the all-ones edge.
+        for f in [0x0000_0000_u32, 0x0000_0001, 0xdead_beef, 0xffff_ffff] {
+            let mut d = CRC32C.digest_with_initial(ChannelHashes::resume_initial(f));
+            d.update(&[]);
+            assert_eq!(d.finalize(), f, "round-trip failed for f=0x{:08x}", f);
+        }
+    }
+
+    /// CRC32C chaining must agree with a single-pass CRC32C over the
+    /// concatenated bytes. Split a known byte string at every
+    /// internal boundary and verify that resuming from the first
+    /// half's finalized value, then feeding the second half, yields
+    /// the same result as a single-pass digest of the whole string.
+    /// This guards `ChannelHashes::extend`'s "resume + feed" pattern
+    /// against any future drift in the `resume_initial` formula.
+    #[test]
+    fn chained_crc32c_matches_single_pass() {
+        // "123456789" is the canonical CRC test vector; CRC32C
+        // (CRC_32_ISCSI) of it is 0xe3069283. We don't hard-code that
+        // here — `Crc::checksum` of the whole string is the oracle.
+        let message: &[u8] = b"123456789";
+        let one_shot = CRC32C.checksum(message);
+
+        for split in 0..=message.len() {
+            let (left, right) = message.split_at(split);
+            let left_finalized = {
+                let mut d = CRC32C.digest();
+                d.update(left);
+                d.finalize()
+            };
+            let chained = {
+                let mut d =
+                    CRC32C.digest_with_initial(ChannelHashes::resume_initial(left_finalized));
+                d.update(right);
+                d.finalize()
+            };
+            assert_eq!(
+                chained, one_shot,
+                "chained digest mismatch at split={}: chained=0x{:08x} expected=0x{:08x}",
+                split, chained, one_shot,
+            );
+        }
+    }
+
+    /// `ChannelHashes::extend` over a single event must equal a
+    /// fresh CRC32C of that event's TLV bytes. This pins the
+    /// "extend == CRC32C over TLV bytes" contract that the on-wire
+    /// per-channel hash records depend on.
+    #[test]
+    fn extend_single_event_matches_one_shot_crc() {
+        let event = Event::Keypress {
+            unicode: 'k',
+            scancode: 0x0042,
+            timestamp_ms: 0x0000_0000_1234_5678,
+        };
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let len = event_tlv_bytes(&event, &mut buf);
+
+        let expected = CRC32C.checksum(&buf[..len]);
+        let actual = ChannelHashes::extend(0, &event);
+        assert_eq!(actual, expected);
+    }
+
+    /// `ChannelHashes::extend` over two events must equal a fresh
+    /// CRC32C over the concatenated TLV bytes. This is the chaining
+    /// property in production form: two `extend` calls compose into
+    /// one running hash over the per-channel byte stream.
+    #[test]
+    fn extend_two_events_matches_concatenated_one_shot_crc() {
+        let first = Event::Keypress {
+            unicode: 'a',
+            scancode: 0x0001,
+            timestamp_ms: 0x0000_0000_0000_0010,
+        };
+        let second = Event::Keypress {
+            unicode: 'b',
+            scancode: 0x0002,
+            timestamp_ms: 0x0000_0000_0000_0020,
+        };
+
+        let mut buf1 = [0u8; MAX_RECORD_SIZE];
+        let len1 = event_tlv_bytes(&first, &mut buf1);
+        let mut buf2 = [0u8; MAX_RECORD_SIZE];
+        let len2 = event_tlv_bytes(&second, &mut buf2);
+
+        let mut concat = [0u8; MAX_RECORD_SIZE * 2];
+        concat[..len1].copy_from_slice(&buf1[..len1]);
+        concat[len1..len1 + len2].copy_from_slice(&buf2[..len2]);
+        let expected = CRC32C.checksum(&concat[..len1 + len2]);
+
+        let after_first = ChannelHashes::extend(0, &first);
+        let after_second = ChannelHashes::extend(after_first, &second);
+
+        assert_eq!(after_second, expected);
+    }
+
+    /// Sanity check against a precomputed CRC32C reference value.
+    /// "123456789" -> 0xe3069283 (per the CRC_32_ISCSI / CRC-32C
+    /// reference in the CRC catalogue). If the underlying `crc`
+    /// crate ever silently swapped algorithms, this test fails
+    /// loudly rather than letting downstream chaining tests pass
+    /// against an off-spec checksum.
+    #[test]
+    fn crc32c_known_vector() {
+        assert_eq!(CRC32C.checksum(b"123456789"), 0xe306_9283);
+    }
+}

@@ -5,23 +5,45 @@
 // state machine which owns the rest of the run (and ends with ACPI
 // shutdown). See DESIGN.md and docs/plans/PLAN-first-playable.md.
 
-#![no_main]
-#![no_std]
+#![cfg_attr(not(test), no_main)]
+#![cfg_attr(not(test), no_std)]
+// Under the test profile, only the pure modules (`digest`, `event`)
+// compile; their consumers in `renderer`/`scene`/`bootloader`/etc.
+// are gated out below. That leaves `pub(crate)` items in `digest`
+// and `event` looking unused to the compiler — which is correct for
+// the test profile but noisy. Silence the lint at-test-time only;
+// production builds still catch genuine dead code.
+#![cfg_attr(test, allow(dead_code))]
 
+// UEFI-dependent modules are excluded from the test profile so host
+// `cargo test` (on `x86_64-unknown-linux-gnu`) does not try to compile
+// `uefi::*` against a non-UEFI target. Pure modules — `digest`,
+// `event` — stay available for `#[cfg(test)]` unit tests.
+#[cfg(not(test))]
 mod bootloader;
+#[cfg(not(test))]
 mod cursor;
 mod digest;
 mod event;
+#[cfg(not(test))]
 mod logo;
+#[cfg(not(test))]
 mod probes;
+#[cfg(not(test))]
 mod renderer;
+#[cfg(not(test))]
 mod scene;
+#[cfg(not(test))]
 mod serial;
 
+#[cfg(not(test))]
 use renderer::Renderer;
+#[cfg(not(test))]
 use scene::Scene;
+#[cfg(not(test))]
 use uefi::prelude::*;
 
+#[cfg(not(test))]
 #[entry]
 fn main() -> Status {
     uefi::helpers::init().unwrap();

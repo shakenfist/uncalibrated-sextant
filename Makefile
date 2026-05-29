@@ -1,9 +1,17 @@
-.PHONY: build clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes digest-payload-smoke
+.PHONY: build test clean qemu spice spice-ryll release release-verify screenshot screenshot-modes vendor-probes digest-payload-smoke
 
 BINARY := target/x86_64-unknown-uefi/release/uncalibrated-sextant.efi
 
 build:
 	./scripts/build.sh
+
+# Host-side unit tests. Runs `cargo test` against the
+# `x86_64-unknown-linux-gnu` target so the test harness (which needs
+# `std`/libtest) can link. Pure modules (`digest`, `event`) compile
+# under the test profile; UEFI-dependent modules in `main.rs` are
+# gated behind `#[cfg(not(test))]`.
+test:
+	./scripts/test.sh
 
 qemu: build
 	./scripts/mkesp.sh

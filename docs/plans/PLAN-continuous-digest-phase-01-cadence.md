@@ -357,11 +357,60 @@ Notes:
 
 ### Post-change (per-line cadence + bootloader + blink)
 
-(Populated by step 1g.)
+Captured against the full phase-1 cadence (commit f475cb2:
+1a measurement scaffold + 1c per-line + 1d blink-transition +
+PARKED initial + 1e carve-out removal + 1f bootloader refresh
+points) via `make digest-payload-smoke`.
+
+```
+type=refresh_stats count=74 total_ms=434 mean_us=5874 max_us=6329 p99_us=6278
+```
+
+Per-step trajectory across the phase:
+
+| Step | count | total_ms | Δcount | Notes |
+|------|-------|----------|--------|-------|
+| 1a (baseline) | 4   | 22  | —    | Three scene-boundary calls plus AWAITING pre-loop. |
+| 1c            | 24  | 135 | +20  | Per-line in `play_script` (PRE 19 + POST 1). |
+| 1d            | 42  | 244 | +18  | Blink transitions in AWAITING + PARKED + PARKED initial. |
+| 1e            | 42  | 236 | 0    | Carve-out removal only — no new sites. |
+| 1f            | 74  | 434 | +32  | Bootloader path: preamble 2 + prompt 1 + intro/blob/input 3 + 23 echoes + post-paste 1 + success 2 = 32. |
+
+Mean per-call cost stays near ~5.7–5.9 ms across the whole
+phase; the read-back hash time is the dominant component and
+it doesn't change with cadence. Maximum and p99 also remain
+consistent.
 
 ### Bail-out evaluation
 
-(Populated by step 1g.)
+Transcript wall-clock: the smoke scripted scene runs from
+first event at `t=1750` to final keypress at `t=15500` plus a
+brief tail to scene exit, ≈14 s of scripted scene timeline.
+
+```
+overhead_pct = total_ms / transcript_ms * 100
+             = 434 / 14000 * 100
+             ≈ 3.1%
+```
+
+**Bail-out criterion: PASS** (3.1% ≤ 5%).
+
+Caveats:
+- The smoke transcript is shorter than a real interactive boot
+  (which would include more AWAITING wait time and more PARKED
+  wait time at human-keypress cadence). A longer transcript
+  with the same per-step refresh count would dilute the
+  overhead ratio further, not concentrate it.
+- The smoke takes the success path through the bootloader.
+  The timeout path adds ~34 more refresh calls (region clear
+  + countdown prefix + 31 per-tick + halt) plus ~30 s of
+  scene timeline, which is ~34 × 6 ms / 35 000 ms ≈ 0.6%
+  additional overhead — also comfortably inside budget.
+- Per-call cost is measured under headless OVMF; interactive
+  SPICE may differ. If a SPICE-driven measurement comes in
+  materially higher, this evaluation should be re-run.
+
+Phase 2 (multi-channel TLV) may proceed.
 
 ## Closeout
 

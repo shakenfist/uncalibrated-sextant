@@ -34,9 +34,10 @@
 // `draw_glyph` (or `draw_text_at`, which calls `draw_glyph` per char)
 // call. No multi-glyph blit shortcuts.
 
+use crate::digest::ChannelHashes;
 use crate::event::{BootloaderChoice, Event, RingBuffer};
 use crate::renderer::Renderer;
-use crate::scene::{poll_key, stall, ChannelHashes, DigestRefresher, PACE_LINE_MS, POLL_MS};
+use crate::scene::{poll_key, stall, DigestRefresher, PACE_LINE_MS, POLL_MS};
 
 /// Maximum length of the paste capture buffer in bytes.
 ///

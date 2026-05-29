@@ -653,15 +653,94 @@ required.
 
 ## Closeout
 
-(Populated by step 2e. Should include: commit range, capacity
-decision and final reasoning, any deviations from the plan,
-links to follow-up work if applicable.
+**Status: Complete.** Commit range `7df2a7b` through `a3639a5`
+(inclusive). All four implementation steps landed; no
+follow-up plans required.
 
-Cross-plan note for the phase 3 docs sweep: the parent
-plan's *TLV capacity strategy* and *Why QR and not a denser
-code* sections quote V10/L = 213 bytes and V20/L = 666
-bytes. Table 7 gives V10/L = 271 bytes and V20/L = 858
-bytes. Fix in phase 3.)
+### Commit map
+
+| Step | Commit  | Title |
+|------|---------|-------|
+| 2a   | 7df2a7b | Record capacity feasibility study. |
+| 2b   | e730a55 | Add ChannelHashes accumulators + centralised push. |
+| 2c   | 57abef4 | Add multi-channel TLV records + schema v2 bump. |
+| 2d   | a3639a5 | Add V5/L payload capacity invariant to smoke. |
+
+### Capacity decision
+
+**V5/L stays; raw events truncate to the 44-byte
+post-overhead budget.** Overturns the parent plan's V10/L
+default. Reasoning in the *Step 2a — Capacity feasibility
+study* section above; in short, every fit-eligible QR
+version+scale at ≥ 3 px/module overlaps the bootloader
+content rows at 640×480 at least as badly as V5@4 already
+does, and the rolling-hash mechanism makes the smaller raw-
+event window acceptable as a diagnostic compromise.
+
+Headline numbers from the post-phase smoke (`make
+digest-payload-smoke`):
+
+```
+records=11 (8 hash + 3 raw)
+payload size: well under 106 bytes
+hashes=[0xe6290d98, 0xa9674102, 0x694bc1ae, 0xdc5e35cc,
+        0x11f4ac3a, 0x00000000, 0x00000000, 0x00000000]
+CRC chaining verification ok
+  (bootloader_timeout=0, keypress!=0, mode_switch=0,
+   mode_cycle=0)
+```
+
+### Decisions made during execution
+
+- **Encoder factoring.** Step 2b factored a `pub(crate) fn
+  event_tlv_bytes(event, &mut buf) -> usize` out of
+  `digest::write_record` so both the encoder and
+  `ChannelHashes::extend` produce identical bytes by
+  construction. The brief allowed either reuse or mirror;
+  factoring was cleaner and prevents future drift.
+- **CRC chaining math.** The `resume_initial(f) = (f ^
+  0xFFFF_FFFF).reverse_bits()` formula in step 2b landed
+  unverified by any host-side test (the project has no
+  test infrastructure for `no_std` modules). Step 2c's
+  empirical assertion in the smoke (unpopulated channels
+  must hash to 0; populated channels must not) confirms
+  the math is correct.
+
+### Deviations from the plan
+
+None substantive. The capacity-strategy flip from the
+parent plan's V10/L default to V5/L+truncation was foreseen
+by this plan's *Open questions* and confirmed by step 2a's
+analysis.
+
+### Follow-ups for phase 3
+
+- **Parent-plan capacity figures need correcting.** The
+  *TLV capacity strategy* and *Why QR and not a denser
+  code* sections of `PLAN-continuous-digest.md` quote
+  V10/L = 213 bytes and V20/L = 666 bytes. Table 7 gives
+  V10/L = 271 bytes and V20/L = 858 bytes. `qrcodegen-no-
+  heap`'s `Version::new(10).buffer_len()` returns 196 —
+  the encoder scratch buffer, not the user-visible byte
+  capacity. The wrong numbers do not affect the V5/L
+  decision but should be corrected when phase 3 sweeps
+  the docs.
+- **Verify ryll's decoder ignores unknown tags gracefully**
+  (parent plan's phase 3 brief item). The schema v2 bump
+  this phase landed means ryll will see new TAG_HASH_*
+  records in the 0x10–0x1F range; verify ryll's parser
+  skips them rather than rejecting the whole payload.
+- **Update `docs/visual-digest-format.md`** with the new
+  TLV records (per parent plan's phase 3 brief).
+
+### Cross-plan note
+
+The encoder factoring in step 2b touched `src/digest.rs`'s
+internal organisation. The wire-format spec
+(`docs/visual-digest-format.md`) does not describe the
+internal API surface, so no spec update is required for
+that change; only the new TLV records need documenting in
+phase 3.
 
 ## Back brief
 

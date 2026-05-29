@@ -359,13 +359,20 @@ lands.
   refresh" — that was the per-boot total across three calls;
   the source comment gives "~7 ms per call" — the per-call
   figure is what matters and what the doc now quotes).
-- **Smoke header comment policy (step 3a).** The
-  `scripts/digest-payload-smoke.sh` header comment still
-  describes the v1 format. Intentionally left stale — the
-  spec is the single source of truth; sweeping the smoke
-  header would duplicate the spec in a second location. The
-  smoke's code-level assertions already cover v2; only the
-  descriptive comment is out of sync.
+- **Smoke header comment policy (step 3a).** The phase 3a
+  brief and closeout originally framed the
+  `scripts/digest-payload-smoke.sh` header comment as
+  intentionally stale (the spec is the single source of
+  truth). The wave-2c pre-push audit (post-phase-3) caught
+  that this framing was wrong: the smoke header was
+  actually updated for schema v2 during step 2c alongside
+  the code changes, and is accurate today. The 3a brief
+  asked the sub-agent not to touch the header on the
+  assumption it was v1-only; the sub-agent correctly
+  obeyed but the assumption was already false. No
+  correction needed for the current state — both the spec
+  and the smoke header describe v2 — only the
+  rationale-for-not-touching is updated here.
 - **DESIGN.md preserves two-channel framing (step 3b).** The
   two-channel framing is kept as historical context ("The
   original design called for..."), with the new substitute-

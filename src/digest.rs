@@ -362,6 +362,23 @@ pub(crate) fn encode(
 /// `ModeSwitch` is the largest at 18 bytes.
 pub(crate) const MAX_RECORD_SIZE: usize = 18;
 
+// Compile-time guard: keep `MAX_RECORD_SIZE` in step with the
+// largest arm of `size_of_record`. `event_tlv_bytes` writes
+// per-variant byte offsets directly into `[u8; MAX_RECORD_SIZE]`;
+// if a new variant exceeds this and `MAX_RECORD_SIZE` is not
+// raised in step, the indexed writes panic on slice bounds. The
+// failure mode is a panic-on-bounds (not memory corruption — the
+// typed array length is the bound), but a compile-time check
+// catches the drift before it ships. If you grow a variant or
+// add one, raise the literal here AND in `MAX_RECORD_SIZE` above.
+const _: () = assert!(
+    MAX_RECORD_SIZE >= 18,
+    "MAX_RECORD_SIZE must accommodate the largest size_of_record \
+     arm. ModeSwitch is currently the largest at 18 bytes; update \
+     both this assertion and MAX_RECORD_SIZE when adding or growing \
+     an Event variant.",
+);
+
 /// Encode a single event as a TLV record into `buf`. Returns the
 /// number of bytes written. The buffer must be at least
 /// `MAX_RECORD_SIZE` bytes (18); the caller provides it as a fixed

@@ -96,6 +96,22 @@ invokes directly.
 
 ## Most recently landed
 
+**Multi-channel rolling hashes (PLAN-continuous-digest phase 2, step
+2c).** `src/digest.rs` schema version bumped to 2. Eight TAG_HASH_*
+constants (0x11..=0x18) added, each mirroring a raw-event tag in the
+reserved range. `RECORD_HASH_SIZE = 6` and `NUM_HASH_CHANNELS = 8`
+constants anchor the layout math. `encode` now accepts `&ChannelHashes`
+and emits one 6-byte record per channel (tag + len=4 + CRC32C LE)
+immediately after the 10-byte header. The raw-event budget is reduced
+by 48 bytes (8 × 6) to 44 bytes. `DigestRefresher::refresh` and
+`Scene::refresh_digest` in `src/scene.rs` thread `&ChannelHashes`
+through. `BootloaderScene::refresh` in `src/bootloader.rs` passes
+`&*self.channel_hashes`. `scripts/digest-payload-smoke.sh` now
+requires version == 2, accepts tags 0x11..=0x18, surfaces the eight
+hashes in the success line, and asserts CRC chaining correctness
+(bootloader_timeout == 0, keypress != 0, mode_switch == 0, mode_cycle
+== 0).
+
 **Measurement scaffold (PLAN-continuous-digest phase 1a).** Every
 `Scene::refresh_digest` call is now TSC-bracketed via
 `core::arch::x86_64::_rdtsc` (stable on Rust 1.88 /

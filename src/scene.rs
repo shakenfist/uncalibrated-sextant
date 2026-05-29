@@ -129,7 +129,16 @@ impl DigestRefresher {
     /// nothing here mutates it. Callers higher up the stack hold a
     /// `&mut RingBuffer`; pass a re-borrowed `&*ring` at the call site
     /// to keep the borrow checker happy.
-    pub(crate) fn refresh(&mut self, renderer: &mut Renderer, ring: &RingBuffer<256>) {
+    ///
+    /// `channel_hashes` carries the eight per-channel rolling CRC32C
+    /// accumulators; the encoder emits them as TAG_HASH_* records
+    /// immediately after the header (before raw event records).
+    pub(crate) fn refresh(
+        &mut self,
+        renderer: &mut Renderer,
+        ring: &RingBuffer<256>,
+        channel_hashes: &ChannelHashes,
+    ) {
         let tsc_start = read_tsc();
 
         self.frame_counter = self.frame_counter.wrapping_add(1);
@@ -142,7 +151,13 @@ impl DigestRefresher {
         let framebuffer_hash = renderer.crc32c_framebuffer_excluding_digest();
 
         let mut buf = [0u8; crate::digest::DIGEST_PAYLOAD_CAPACITY];
-        match crate::digest::encode(ring, self.frame_counter, framebuffer_hash, &mut buf) {
+        match crate::digest::encode(
+            ring,
+            self.frame_counter,
+            framebuffer_hash,
+            channel_hashes,
+            &mut buf,
+        ) {
             Ok(len) => renderer.draw_digest(&buf[..len]),
             Err(_) => {
                 // Encoder errors are programmer bugs at this point —
@@ -959,7 +974,8 @@ impl Scene {
     /// path is shared with the bootloader refresh sites and is
     /// testable in isolation.
     fn refresh_digest(&mut self, renderer: &mut Renderer) {
-        self.digest_refresher.refresh(renderer, &self.ring);
+        self.digest_refresher
+            .refresh(renderer, &self.ring, &self.channel_hashes);
     }
 
     /// Draw a toast on the bottom row naming the applied mode.

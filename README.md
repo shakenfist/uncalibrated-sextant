@@ -24,10 +24,12 @@ grid in the top-right corner. The opening beats probe for Mandarin /
 Hindi / Spanish / English language support (the three non-English probes
 report failure in their own scripts, English OK), establishing that
 English is no longer the default in the fictional universe. The
-bottom-right of the framebuffer carries a QR code that encodes the
-most-recent ring-buffer events plus a CRC32C of the rest of the
-screen; an external decoder (e.g. ryll) can read this from a
-screenshot to validate the display path independently of serial.
+bottom-right of the framebuffer carries a QR code (schema v2) that
+encodes eight per-channel rolling CRC32C hashes (one per event variant,
+accumulated since boot) followed by the most-recent ring-buffer raw
+events, plus a CRC32C of the rest of the screen; an external decoder
+(e.g. ryll) can read this from a screenshot to validate the display
+path and confirm every event was received, independently of serial.
 On final shutdown, the event ring buffer is drained to the UEFI
 Serial protocol as plain text, groundwork for the eventual
 gRPC-over-serial transport. See [DESIGN.md](DESIGN.md) for the

@@ -21,16 +21,20 @@
 use crc::{Crc, CRC_32_ISCSI};
 
 use crate::event::{BootloaderChoice, Event, Phase, RingBuffer};
+use crate::scene::ChannelHashes;
 
 /// Magic identifier for a SeXtant DiGest payload. Four exact bytes at
 /// offset 0 let a host-side decoder say "this PNG contains a digest"
 /// with very high confidence against random noise.
 pub(crate) const DIGEST_MAGIC: [u8; 4] = *b"SXDG";
 
-/// Schema version of the wire format. Bump when a field shape changes
-/// or a TLV type is repurposed; adding a new TLV type does not require
-/// a bump (TLV's whole point).
-pub(crate) const DIGEST_SCHEMA_VERSION: u8 = 0x01;
+/// Schema version of the wire format. Bumped from 1 to 2 in step 2c
+/// to signal that per-channel rolling-hash records (tags 0x11..=0x18)
+/// are now present in every payload. Existing raw event tags (0x01..=
+/// 0x08) are unchanged; the bump is informational rather than a hard
+/// break — a v1-only decoder that encounters v2 records sees unknown
+/// tags in the 0x10–0x1F reserved range and should skip them.
+pub(crate) const DIGEST_SCHEMA_VERSION: u8 = 0x02;
 
 /// TLV type tag: `Event::Keypress`. Parallel to `serial::drain`'s
 /// `type=keypress` discriminator.
@@ -56,6 +60,40 @@ pub(crate) const TAG_MODE_SWITCH: u8 = 0x07;
 /// TLV type tag: `Event::ModeCycle`. Parallel to `serial::drain`'s
 /// `type=mode_cycle` discriminator.
 pub(crate) const TAG_MODE_CYCLE: u8 = 0x08;
+
+/// TLV type tag: per-channel rolling CRC32C hash for `Event::Keypress`.
+/// Mirrors `TAG_KEYPRESS` in the 0x10–0x1F reserved range. The value
+/// (4 bytes LE) is the CRC32C of every `Keypress` TLV record since boot.
+pub(crate) const TAG_HASH_KEYPRESS: u8 = 0x11;
+/// TLV type tag: per-channel rolling CRC32C hash for `Event::LineRendered`.
+/// Mirrors `TAG_LINE_RENDERED` in the 0x10–0x1F reserved range.
+pub(crate) const TAG_HASH_LINE_RENDERED: u8 = 0x12;
+/// TLV type tag: per-channel rolling CRC32C hash for `Event::SceneTransition`.
+/// Mirrors `TAG_SCENE_TRANSITION` in the 0x10–0x1F reserved range.
+pub(crate) const TAG_HASH_SCENE_TRANSITION: u8 = 0x13;
+/// TLV type tag: per-channel rolling CRC32C hash for `Event::BootloaderDecision`.
+/// Mirrors `TAG_BOOTLOADER_DECISION` in the 0x10–0x1F reserved range.
+pub(crate) const TAG_HASH_BOOTLOADER_DECISION: u8 = 0x14;
+/// TLV type tag: per-channel rolling CRC32C hash for `Event::PasteReceived`.
+/// Mirrors `TAG_PASTE_RECEIVED` in the 0x10–0x1F reserved range.
+pub(crate) const TAG_HASH_PASTE_RECEIVED: u8 = 0x15;
+/// TLV type tag: per-channel rolling CRC32C hash for `Event::BootloaderTimeout`.
+/// Mirrors `TAG_BOOTLOADER_TIMEOUT` in the 0x10–0x1F reserved range.
+pub(crate) const TAG_HASH_BOOTLOADER_TIMEOUT: u8 = 0x16;
+/// TLV type tag: per-channel rolling CRC32C hash for `Event::ModeSwitch`.
+/// Mirrors `TAG_MODE_SWITCH` in the 0x10–0x1F reserved range.
+pub(crate) const TAG_HASH_MODE_SWITCH: u8 = 0x17;
+/// TLV type tag: per-channel rolling CRC32C hash for `Event::ModeCycle`.
+/// Mirrors `TAG_MODE_CYCLE` in the 0x10–0x1F reserved range.
+pub(crate) const TAG_HASH_MODE_CYCLE: u8 = 0x18;
+
+/// On-wire byte size of a single per-channel rolling-hash record:
+/// one tag byte + one length byte (always 4) + four CRC32C bytes.
+pub(crate) const RECORD_HASH_SIZE: usize = 6;
+
+/// Number of per-channel rolling-hash records emitted per payload.
+/// One record per `Event` variant; tags 0x11..=0x18 in numeric order.
+pub(crate) const NUM_HASH_CHANNELS: usize = 8;
 
 /// Wire discriminant for `Phase::Awaiting`.
 pub(crate) const PHASE_AWAITING: u8 = 0x00;
@@ -182,20 +220,31 @@ fn size_of_record(event: &Event) -> usize {
 ///
 /// 1. Collect references to every event in the ring (chronological).
 /// 2. Walk newest-to-oldest, summing per-record sizes, until adding
-///    one more would exceed the 92-byte record budget. Remember the
+///    one more would exceed the raw-event record budget (44 bytes
+///    after subtracting the 48-byte rolling-hash block). Remember the
 ///    oldest included index.
-/// 3. Write the 10-byte header in forward order: magic, version,
-///    frame counter (u32 LE), record count (u8).
-/// 4. Write the included records in chronological (forward) order.
-/// 5. Write the 4-byte trailer: `framebuffer_hash` as u32 LE.
+/// 3. Write the 10-byte header: magic, version, frame counter (u32
+///    LE), total record count (u8, hash records + raw records).
+/// 4. Write the 8 per-channel rolling-hash records in tag-numeric
+///    order (0x11..=0x18), immediately after the header. Each record
+///    is 6 bytes: tag (1) + len=4 (1) + CRC32C value (4, LE).
+/// 5. Write the included raw-event records in chronological (forward)
+///    order.
+/// 6. Write the 4-byte trailer: `framebuffer_hash` as u32 LE.
 ///
-/// Pure function: no IO, no clock reads, no `&mut Renderer`. Step 2c
-/// computes `framebuffer_hash` against the framebuffer's non-digest
-/// pixels and passes it in.
+/// Wire layout (v2):
+///   [10-byte header]
+///   [8 × 6-byte hash records   = 48 bytes]
+///   [raw event records          ≤ 44 bytes]
+///   [4-byte trailer]
+///   Total ≤ 106 bytes (DIGEST_PAYLOAD_CAPACITY, V5/L).
+///
+/// Pure function: no IO, no clock reads, no `&mut Renderer`.
 pub(crate) fn encode(
     ring: &RingBuffer<256>,
     frame_counter: u32,
     framebuffer_hash: u32,
+    channel_hashes: &ChannelHashes,
     out: &mut [u8; DIGEST_PAYLOAD_CAPACITY],
 ) -> Result<usize, EncodeError> {
     // Stack-allocated index buffer. `Option<&Event>` is two
@@ -214,8 +263,11 @@ pub(crate) fn encode(
     }
 
     // Walk newest-to-oldest, selecting the most-recent run of events
-    // that fits in the record budget.
-    const RECORD_BUDGET: usize = DIGEST_PAYLOAD_CAPACITY - DIGEST_FIXED_OVERHEAD;
+    // that fits in the raw-event record budget. The hash block (8 ×
+    // RECORD_HASH_SIZE = 48 bytes) is deducted from the budget so
+    // raw records never displace hash records.
+    const HASH_BLOCK_BYTES: usize = NUM_HASH_CHANNELS * RECORD_HASH_SIZE; // 48
+    const RECORD_BUDGET: usize = DIGEST_PAYLOAD_CAPACITY - DIGEST_FIXED_OVERHEAD - HASH_BLOCK_BYTES; // 44
     let mut record_bytes: usize = 0;
     let mut included: usize = 0;
     for slot in events[..total].iter().rev() {
@@ -229,13 +281,17 @@ pub(crate) fn encode(
         record_bytes += sz;
         included += 1;
         if included == 255 {
-            // Record count is a u8.
+            // Record count is a u8; cap at 255 - NUM_HASH_CHANNELS to
+            // leave space for the hash records in the count field.
             break;
         }
     }
 
     let first_idx = total - included;
-    let total_len = DIGEST_HEADER_LEN + record_bytes + DIGEST_TRAILER_LEN;
+    // Total record count for the header includes both hash records and
+    // raw event records.
+    let total_records = NUM_HASH_CHANNELS + included;
+    let total_len = DIGEST_HEADER_LEN + HASH_BLOCK_BYTES + record_bytes + DIGEST_TRAILER_LEN;
     if total_len > out.len() {
         return Err(EncodeError::InternalOverflow);
     }
@@ -248,10 +304,42 @@ pub(crate) fn encode(
     pos += 1;
     out[pos..pos + 4].copy_from_slice(&frame_counter.to_le_bytes());
     pos += 4;
-    out[pos] = included as u8;
+    // Record count covers hash records + raw event records.
+    out[pos] = total_records as u8;
     pos += 1;
 
-    // Records, in chronological (forward) order.
+    // Per-channel rolling-hash records in tag-numeric order
+    // (0x11..=0x18). Each record: tag (1) + len=4 (1) + hash (4 LE).
+    // These appear before raw event records so they survive any
+    // capacity constraint; the raw-event budget is already reduced
+    // by HASH_BLOCK_BYTES above.
+    let hash_channels: [(u8, u32); NUM_HASH_CHANNELS] = [
+        (TAG_HASH_KEYPRESS, channel_hashes.keypress),
+        (TAG_HASH_LINE_RENDERED, channel_hashes.line_rendered),
+        (TAG_HASH_SCENE_TRANSITION, channel_hashes.scene_transition),
+        (
+            TAG_HASH_BOOTLOADER_DECISION,
+            channel_hashes.bootloader_decision,
+        ),
+        (TAG_HASH_PASTE_RECEIVED, channel_hashes.paste_received),
+        (
+            TAG_HASH_BOOTLOADER_TIMEOUT,
+            channel_hashes.bootloader_timeout,
+        ),
+        (TAG_HASH_MODE_SWITCH, channel_hashes.mode_switch),
+        (TAG_HASH_MODE_CYCLE, channel_hashes.mode_cycle),
+    ];
+    for (tag, hash) in &hash_channels {
+        if pos + RECORD_HASH_SIZE > out.len() {
+            return Err(EncodeError::InternalOverflow);
+        }
+        out[pos] = *tag;
+        out[pos + 1] = 4; // length of value field
+        out[pos + 2..pos + 6].copy_from_slice(&hash.to_le_bytes());
+        pos += RECORD_HASH_SIZE;
+    }
+
+    // Raw event records, in chronological (forward) order.
     for slot in &events[first_idx..total] {
         let Some(event) = slot else {
             return Err(EncodeError::InternalOverflow);

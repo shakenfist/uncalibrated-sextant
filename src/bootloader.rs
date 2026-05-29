@@ -191,11 +191,13 @@ impl<'a> BootloaderScene<'a> {
 
     /// Drive a digest refresh against the current renderer state.
     ///
-    /// Re-borrows `self.ring` as a shared reference so the refresher
-    /// can read it while the renderer is borrowed mutably; the
-    /// outer `&mut RingBuffer` is unaffected after this returns.
+    /// Re-borrows `self.ring` as a shared reference and
+    /// `self.channel_hashes` as a shared reference so the refresher
+    /// can read both while the renderer is borrowed mutably; the
+    /// outer `&mut` references are unaffected after this returns.
     fn refresh(&mut self) {
-        self.digest_refresher.refresh(self.renderer, &*self.ring);
+        self.digest_refresher
+            .refresh(self.renderer, &*self.ring, &*self.channel_hashes);
     }
 
     /// Push an event into the ring buffer and update the per-channel

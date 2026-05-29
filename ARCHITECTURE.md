@@ -259,6 +259,22 @@ CRC32C trailer over the non-digest framebuffer pixels) is
 documented in [docs/visual-digest-format.md](docs/visual-digest-format.md);
 `make digest-payload-smoke` is the headless decoder reference.
 
+**Multi-channel rolling hashes (PLAN-continuous-digest phase 2, steps
+2b–2c).** A `ChannelHashes` struct in `src/scene.rs` carries eight
+`u32` CRC32C accumulators — one per `Event` variant — updated on every
+`push_event` call in `Scene` and `BootloaderScene`. The CRC chaining
+uses `Crc::digest_with_initial` with `resume_initial(f) = (f ^
+0xFFFF_FFFF).reverse_bits()` to correctly resume from a previously-
+finalized CRC_32_ISCSI value. Schema version 2 adds eight TAG_HASH_*
+records (0x11..=0x18, matching the raw tag numbers plus 0x10) to the
+TLV payload immediately after the 10-byte header; each is 6 bytes
+(tag + len=4 + CRC32C LE). The 48-byte hash block is deducted from
+the raw-event budget before truncation, so hash records always survive.
+`DIGEST_SCHEMA_VERSION` was bumped from 1 to 2 in step 2c to signal
+the new tag conventions. Capacity stays V5/L (106 bytes) per the step
+2a capacity study, leaving 44 bytes for raw events (~3 records per
+frame).
+
 **Measurement scaffold (PLAN-continuous-digest phase 1a).** Every
 call to `Scene::refresh_digest` is bracketed by reads of the x86
 TSC (`core::arch::x86_64::_rdtsc`, stable on Rust 1.88 / the

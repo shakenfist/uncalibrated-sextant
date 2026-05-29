@@ -44,14 +44,14 @@ fn read_tsc() -> u64 {
     unsafe { _rdtsc() }
 }
 
-/// Per-call timing statistics for `Scene::refresh_digest`.
+/// Per-call timing statistics for `DigestRefresher::refresh`.
 ///
 /// Accumulated across every call during a boot run and emitted as a
 /// single summary line on the serial drain just before ACPI shutdown.
 /// Provides the raw numbers needed to evaluate the phase-1 bail-out
 /// criterion (total refresh wall-clock ≤ 5% of transcript duration).
 pub(crate) struct RefreshStats {
-    /// Number of `refresh_digest` calls recorded so far.
+    /// Number of `refresh` calls recorded so far.
     pub(crate) count: u32,
     /// Sum of TSC tick deltas across all calls.
     pub(crate) total_ticks: u64,
@@ -74,7 +74,7 @@ impl RefreshStats {
         }
     }
 
-    /// Record one `refresh_digest` call that took `ticks` TSC counts.
+    /// Record one `refresh` call that took `ticks` TSC counts.
     fn record(&mut self, ticks: u64) {
         self.count += 1;
         self.total_ticks = self.total_ticks.saturating_add(ticks);
@@ -83,6 +83,76 @@ impl RefreshStats {
         }
         self.sample_ring[self.sample_head % 256] = ticks;
         self.sample_head += 1;
+    }
+}
+
+/// Owner of the digest-refresh state and the refresh entry point.
+///
+/// Holds the per-boot frame counter, the TSC calibration, and the
+/// rolling refresh-cost statistics. Threaded through to the
+/// locked-bootloader sub-state-machine via `bootloader::run` so the
+/// bootloader can fire refresh calls at its own visible-state-change
+/// points without taking a reference to `Scene` (which would expose
+/// `Scene`'s surface to `bootloader.rs`).
+///
+/// Hash path is path A: `Renderer::crc32c_framebuffer_excluding_digest`
+/// reads the framebuffer back via `BltOp::VideoToBltBuffer` and CRC32Cs
+/// every byte outside the right-anchored digest region. See
+/// `PLAN-visual-digest-phase-02-payload.md` for the A/B rationale.
+pub(crate) struct DigestRefresher {
+    /// Monotonic per-boot counter. Starts at 0; first `refresh` call
+    /// increments to 1. Wraps at u32::MAX.
+    frame_counter: u32,
+    /// TSC ticks per millisecond, calibrated once at scene start.
+    /// Zero until calibration completes; consumed by `serial::drain`
+    /// for the refresh-stats summary line.
+    pub(crate) ticks_per_ms: u64,
+    /// Per-call timing statistics; consumed by `serial::drain`.
+    pub(crate) stats: RefreshStats,
+}
+
+impl DigestRefresher {
+    pub(crate) const fn new() -> Self {
+        Self {
+            frame_counter: 0,
+            ticks_per_ms: 0,
+            stats: RefreshStats::new(),
+        }
+    }
+
+    /// Compute and render the on-screen digest reflecting the current
+    /// ring-buffer state. Wraps the body in a TSC bracket so the
+    /// per-call cost is accounted into `stats`.
+    ///
+    /// `ring` is taken by shared reference: the encoder reads from it,
+    /// nothing here mutates it. Callers higher up the stack hold a
+    /// `&mut RingBuffer`; pass a re-borrowed `&*ring` at the call site
+    /// to keep the borrow checker happy.
+    pub(crate) fn refresh(&mut self, renderer: &mut Renderer, ring: &RingBuffer<256>) {
+        let tsc_start = read_tsc();
+
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+
+        // Path A: read the framebuffer back via
+        // `BltOp::VideoToBltBuffer` and CRC32C every pixel byte
+        // outside the digest region. Excluding the digest region
+        // avoids the self-referencing-hash trap (the QR encodes a
+        // hash of everything-not-itself).
+        let framebuffer_hash = renderer.crc32c_framebuffer_excluding_digest();
+
+        let mut buf = [0u8; crate::digest::DIGEST_PAYLOAD_CAPACITY];
+        match crate::digest::encode(ring, self.frame_counter, framebuffer_hash, &mut buf) {
+            Ok(len) => renderer.draw_digest(&buf[..len]),
+            Err(_) => {
+                // Encoder errors are programmer bugs at this point —
+                // the buffer is sized exactly to capacity. Skip refresh
+                // rather than crash; phase-3 closeout will surface this
+                // via a log.
+            }
+        }
+
+        let tsc_end = read_tsc();
+        self.stats.record(tsc_end.saturating_sub(tsc_start));
     }
 }
 
@@ -340,17 +410,12 @@ pub struct Scene {
     repaint_state: RepaintState,
     /// Active on-screen toast state; `None` when no toast is visible.
     toast: Option<ToastState>,
-    /// Monotonic per-boot counter for the on-screen visual digest.
-    /// Starts at `0`; the first `refresh_digest` call increments to `1`.
-    /// Wraps at `u32::MAX` (136 years at 1 Hz — not a concern).
-    digest_frame_counter: u32,
-    /// TSC ticks per millisecond, calibrated once at `Scene::run` entry.
-    /// Zero until calibration completes; `refresh_digest` uses it to
-    /// convert tick deltas to microseconds for the serial drain summary.
-    ticks_per_ms: u64,
-    /// Per-call timing statistics for `refresh_digest`. Accumulated
-    /// across the full boot run; emitted by `serial::drain`.
-    refresh_stats: RefreshStats,
+    /// Owner of the digest frame counter, TSC calibration, refresh
+    /// statistics, and the `refresh` entry point that runs path-A
+    /// hashing and re-encodes the QR. Threaded into `bootloader::run`
+    /// so the sub-state-machine can fire refreshes at its own
+    /// visible-state-change points.
+    digest_refresher: DigestRefresher,
 }
 
 impl Scene {
@@ -363,9 +428,7 @@ impl Scene {
             clock_ms: 0,
             repaint_state: RepaintState::Chrome,
             toast: None,
-            digest_frame_counter: 0,
-            ticks_per_ms: 0,
-            refresh_stats: RefreshStats::new(),
+            digest_refresher: DigestRefresher::new(),
         }
     }
 
@@ -380,7 +443,7 @@ impl Scene {
         let tsc_before = read_tsc();
         uefi::boot::stall(Duration::from_millis(100));
         let tsc_after = read_tsc();
-        self.ticks_per_ms = (tsc_after.saturating_sub(tsc_before)) / 100;
+        self.digest_refresher.ticks_per_ms = (tsc_after.saturating_sub(tsc_before)) / 100;
 
         Self::draw_chrome(renderer);
         self.run_awaiting(renderer);
@@ -392,7 +455,11 @@ impl Scene {
         self.run_parked(renderer, next_row);
         self.refresh_digest(renderer);
 
-        serial::drain(&self.ring, &self.refresh_stats, self.ticks_per_ms);
+        serial::drain(
+            &self.ring,
+            &self.digest_refresher.stats,
+            self.digest_refresher.ticks_per_ms,
+        );
 
         uefi::runtime::reset(
             uefi::runtime::ResetType::SHUTDOWN,
@@ -505,8 +572,13 @@ impl Scene {
         // takes shared mutable references to the renderer, the ring
         // buffer, and the monotonic clock so its events and timing
         // land on the same timeline as the rest of the scene.
-        let bootloader::BootloaderOutcome::Continue { next_row } =
-            bootloader::run(renderer, &mut self.ring, &mut self.clock_ms, row);
+        let bootloader::BootloaderOutcome::Continue { next_row } = bootloader::run(
+            renderer,
+            &mut self.ring,
+            &mut self.clock_ms,
+            &mut self.digest_refresher,
+            row,
+        );
         row = next_row;
         let bootloader_next_row = next_row;
 
@@ -715,55 +787,23 @@ impl Scene {
     /// Compute and render the on-screen digest reflecting the
     /// current ring-buffer state. Called at scene-phase boundaries
     /// from the outer scene loop (`Scene::run`), after each painted
-    /// line in the boot transcript, on cursor blink transitions, and
-    /// at explicit refresh points inside `src/bootloader.rs`.
+    /// line in the boot transcript, and on cursor blink transitions.
     ///
     /// The bootloader sub-state-machine places its own refresh calls
-    /// after each visible state change; `Scene::repaint` during the
-    /// bootloader scene falls back to PRE-only reconstruction (the
-    /// bootloader's row content is not reconstructable from
-    /// `RepaintState`) and `refresh_digest` participates normally.
+    /// — by holding a `&mut DigestRefresher` threaded through
+    /// `bootloader::run` — at every visible state change inside
+    /// `src/bootloader.rs`. `Scene::repaint` during the bootloader
+    /// scene falls back to PRE-only reconstruction (the bootloader's
+    /// row content is not reconstructable from `RepaintState`) and
+    /// this method participates normally afterwards.
     ///
-    /// Hash path A: reads the framebuffer back via
-    /// `BltOp::VideoToBltBuffer` and CRC32Cs the bytes outside the
-    /// right-anchored digest region. Picked over path B (per-paint
-    /// incremental hash) by 2c-measure: path A concentrates ~21.5M
-    /// cycles per call (~7 ms at 3 GHz) into the named refresh sites
-    /// instead of leaking hash overhead into every paint site forever,
-    /// and it implicitly exercises the SPICE display's read-back path
-    /// which the project otherwise never touches. See
-    /// `PLAN-visual-digest-phase-02-payload.md` *Outcome* for the full
-    /// A/B numbers and rationale.
+    /// Thin wrapper over `DigestRefresher::refresh`; the real work
+    /// (TSC bracket + frame-counter bump + path-A hash + encode +
+    /// `draw_digest` + stats update) lives there so the same code
+    /// path is shared with the bootloader refresh sites and is
+    /// testable in isolation.
     fn refresh_digest(&mut self, renderer: &mut Renderer) {
-        let tsc_start = read_tsc();
-
-        self.digest_frame_counter = self.digest_frame_counter.wrapping_add(1);
-
-        // Path A: read the framebuffer back via
-        // `BltOp::VideoToBltBuffer` and CRC32C every pixel byte
-        // outside the digest region. Excluding the digest region
-        // avoids the self-referencing-hash trap (the QR encodes a
-        // hash of everything-not-itself).
-        let framebuffer_hash = renderer.crc32c_framebuffer_excluding_digest();
-
-        let mut buf = [0u8; crate::digest::DIGEST_PAYLOAD_CAPACITY];
-        match crate::digest::encode(
-            &self.ring,
-            self.digest_frame_counter,
-            framebuffer_hash,
-            &mut buf,
-        ) {
-            Ok(len) => renderer.draw_digest(&buf[..len]),
-            Err(_) => {
-                // Encoder errors are programmer bugs at this point —
-                // the buffer is sized exactly to capacity. Skip refresh
-                // rather than crash; phase-3 closeout will surface this
-                // via a log.
-            }
-        }
-
-        let tsc_end = read_tsc();
-        self.refresh_stats.record(tsc_end.saturating_sub(tsc_start));
+        self.digest_refresher.refresh(renderer, &self.ring);
     }
 
     /// Draw a toast on the bottom row naming the applied mode.

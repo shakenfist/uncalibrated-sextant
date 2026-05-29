@@ -11,10 +11,23 @@
 // followed by ACPI shutdown.
 //
 // State carrier (`BootloaderScene`) holds shared mutable references to
-// the renderer, ring buffer, and the scene clock (`clock_ms`) so the
-// sub-state-machine's events and stall timing land on the same timeline
-// as the rest of the run. The bootloader does not own a clock — that
-// would create two clocks the serial drain would have to reconcile.
+// the renderer, ring buffer, the scene clock (`clock_ms`), and the
+// scene's `DigestRefresher` so the sub-state-machine's events, stall
+// timing, and visual-digest refreshes land on the same timeline as the
+// rest of the run. The bootloader does not own a clock or a frame
+// counter — that would create two of each the serial drain would have
+// to reconcile.
+//
+// Refresh-point convention: every function in this module that drives
+// a visible state change ends that change with a
+// `digest_refresher.refresh(renderer, ring)` call so a screenshot
+// taken at any time during the bootloader scene sees a QR whose
+// payload matches what is currently on screen. The carve-out from the
+// parent plan's "no refresh inside polling loops" rule is
+// `capture_paste`'s printable-ASCII echo branch: the echo IS the
+// visible state change, so it refreshes there (and only there) inside
+// the poll loop. Idle polls and the Enter-terminate branch do not
+// refresh.
 //
 // Per principle 6: every dot in the retry animation, every digit in the
 // countdown, every echo character of the paste input is its own
@@ -23,7 +36,7 @@
 
 use crate::event::{BootloaderChoice, Event, RingBuffer};
 use crate::renderer::Renderer;
-use crate::scene::{poll_key, stall, PACE_LINE_MS, POLL_MS};
+use crate::scene::{poll_key, stall, DigestRefresher, PACE_LINE_MS, POLL_MS};
 
 /// Maximum length of the paste capture buffer in bytes.
 ///
@@ -82,6 +95,10 @@ struct BootloaderScene<'a> {
     renderer: &'a mut Renderer,
     ring: &'a mut RingBuffer<256>,
     clock_ms: &'a mut u64,
+    /// The scene's digest refresher, threaded in so this module can
+    /// fire `refresh` calls at its own visible-state-change points
+    /// without holding a reference to `Scene`.
+    digest_refresher: &'a mut DigestRefresher,
     /// First row of the bootloader scene region (passed in from the
     /// caller; the telemetry preamble lines render on this row and
     /// `start_row + 1`).
@@ -127,12 +144,14 @@ pub fn run(
     renderer: &mut Renderer,
     ring: &mut RingBuffer<256>,
     clock_ms: &mut u64,
+    digest_refresher: &mut DigestRefresher,
     start_row: usize,
 ) -> BootloaderOutcome {
     let mut scene = BootloaderScene {
         renderer,
         ring,
         clock_ms,
+        digest_refresher,
         start_row,
         highest_row: start_row,
         prompt_attempt: 0,
@@ -161,6 +180,15 @@ impl<'a> BootloaderScene<'a> {
         }
     }
 
+    /// Drive a digest refresh against the current renderer state.
+    ///
+    /// Re-borrows `self.ring` as a shared reference so the refresher
+    /// can read it while the renderer is borrowed mutably; the
+    /// outer `&mut RingBuffer` is unaffected after this returns.
+    fn refresh(&mut self) {
+        self.digest_refresher.refresh(self.renderer, &*self.ring);
+    }
+
     /// Render the two telemetry preamble lines that establish the
     /// scene's diegetic failure: b64 coprocessor OFFLINE and NIST
     /// 800-53 SC-28(1) Secret hardening DISABLED BY CONFIGURATION.
@@ -178,6 +206,7 @@ impl<'a> BootloaderScene<'a> {
             timestamp_ms: *self.clock_ms,
         });
         self.note_row(row1);
+        self.refresh();
         stall(self.clock_ms, PACE_LINE_MS);
 
         let row2 = self.start_row + 1;
@@ -191,6 +220,7 @@ impl<'a> BootloaderScene<'a> {
             timestamp_ms: *self.clock_ms,
         });
         self.note_row(row2);
+        self.refresh();
         stall(self.clock_ms, PACE_LINE_MS);
     }
 
@@ -235,15 +265,26 @@ impl<'a> BootloaderScene<'a> {
         self.note_row(self.prompt_row);
 
         // If the nudge has been rendered before, re-render it so it
-        // remains visible alongside the freshly-redrawn prompt.
+        // remains visible alongside the freshly-redrawn prompt. The
+        // re-render fires its own refresh, which covers both the
+        // prompt line and the nudge line — no second refresh below.
         if self.nudge_rendered {
             self.render_nudge();
+        } else {
+            self.refresh();
         }
     }
 
     /// Render the diegetic nudge below the prompt and mark it as
     /// shown. Idempotent in effect: subsequent calls re-render the
     /// same line on the same row.
+    ///
+    /// Fires a digest refresh at the end so the standalone call from
+    /// the `RETRY_NUDGE_AFTER` threshold (where the prompt is not
+    /// being re-rendered) propagates the nudge into the QR. When
+    /// called from `render_prompt`'s re-render branch, the prompt
+    /// suppresses its own refresh in favour of this one — see
+    /// `render_prompt` for the rationale.
     fn render_nudge(&mut self) {
         const NUDGE: &str = "Continued retry will not change the outcome.";
         self.renderer.draw_text_at(NUDGE, 0, self.nudge_row);
@@ -253,6 +294,7 @@ impl<'a> BootloaderScene<'a> {
         });
         self.note_row(self.nudge_row);
         self.nudge_rendered = true;
+        self.refresh();
     }
 
     /// Render the prompt and poll until the operator selects R, I,
@@ -355,6 +397,10 @@ impl<'a> BootloaderScene<'a> {
             stall(self.clock_ms, RETRY_SLEEP_MS);
             self.renderer.draw_glyph('.', col, self.prompt_row);
             col += 1;
+            // The dots ARE the visible state change — refresh per
+            // dot so a screenshot mid-animation sees the in-progress
+            // dot leader in the QR.
+            self.refresh();
         }
     }
 
@@ -394,6 +440,7 @@ impl<'a> BootloaderScene<'a> {
             timestamp_ms: *self.clock_ms,
         });
         self.note_row(intro_row);
+        self.refresh();
 
         // Blank row at start_row + 3.
 
@@ -404,6 +451,7 @@ impl<'a> BootloaderScene<'a> {
             timestamp_ms: *self.clock_ms,
         });
         self.note_row(blob_row);
+        self.refresh();
 
         // Blank row at start_row + 5.
 
@@ -416,6 +464,7 @@ impl<'a> BootloaderScene<'a> {
             timestamp_ms: *self.clock_ms,
         });
         self.note_row(input_row);
+        self.refresh();
 
         let input_col_start = INPUT_PROMPT.len();
 
@@ -427,6 +476,12 @@ impl<'a> BootloaderScene<'a> {
                         correct: true,
                         timestamp_ms: *self.clock_ms,
                     });
+                    // Paste-correctness refresh: a screenshot taken
+                    // here sees the paste content AND the validation
+                    // verdict in the same QR, satisfying the parent
+                    // plan's "no race between PasteReceived and the
+                    // success/wrong branch" requirement.
+                    self.refresh();
                     return self.run_success();
                 }
                 PasteOutcome::Wrong(len) => {
@@ -435,6 +490,9 @@ impl<'a> BootloaderScene<'a> {
                         correct: false,
                         timestamp_ms: *self.clock_ms,
                     });
+                    // Paste-correctness refresh (Wrong branch); see
+                    // the Correct branch above for rationale.
+                    self.refresh();
                     self.wrong_paste_count += 1;
                     if self.wrong_paste_count >= WRONG_PASTE_LIMIT {
                         // Three strikes — bypass the silent-wait
@@ -487,6 +545,12 @@ impl<'a> BootloaderScene<'a> {
                         row: self.wrong_indicator_row,
                         timestamp_ms: *self.clock_ms,
                     });
+                    // One refresh covers both the re-rendered input
+                    // prompt and the wrong indicator — they are
+                    // immediately adjacent draws with no key polling
+                    // between them, so a single refresh at the end of
+                    // the block is semantically equivalent to two.
+                    self.refresh();
                     // Loop: capture_paste resets to its own input
                     // column tracking.
                 }
@@ -547,6 +611,15 @@ impl<'a> BootloaderScene<'a> {
                         len += 1;
                         self.renderer.draw_glyph(ch, col, input_row);
                         col += 1;
+                        // Carve-out from "no refresh inside polling
+                        // loops": the echoed glyph IS the visible
+                        // state change. Refreshing here (and only
+                        // here — not on the idle-poll branch, not on
+                        // the Enter-terminate branch) gives the
+                        // per-keystroke oracle the parent plan calls
+                        // out as the highest-diagnostic-value
+                        // moment in the whole scene.
+                        self.refresh();
                         if len == PASTE_BUFFER_LEN {
                             // Buffer fills before Enter: treat as a
                             // wrong paste so the operator gets a
@@ -580,12 +653,14 @@ impl<'a> BootloaderScene<'a> {
         for row in self.start_row..=self.highest_row {
             self.renderer.clear_row(row);
         }
+        self.refresh();
         let booting_row = self.start_row + 2;
         self.renderer.draw_text_at("Booting...", 0, booting_row);
         self.ring.push(Event::LineRendered {
             row: booting_row,
             timestamp_ms: *self.clock_ms,
         });
+        self.refresh();
         stall(self.clock_ms, BOOT_PAUSE_MS);
         BootloaderOutcome::Continue {
             next_row: self.start_row + 3,
@@ -619,6 +694,7 @@ impl<'a> BootloaderScene<'a> {
         for row in self.start_row..=self.highest_row {
             self.renderer.clear_row(row);
         }
+        self.refresh();
 
         let countdown_row = self.start_row + 2;
         const COUNTDOWN_PREFIX: &str = "Awaiting decoded payload. Aborting in ";
@@ -629,6 +705,7 @@ impl<'a> BootloaderScene<'a> {
         let nn_col = COUNTDOWN_PREFIX.len();
         let dots_col = nn_col + 2;
         self.renderer.draw_text_at("...", dots_col, countdown_row);
+        self.refresh();
 
         // Tick from TIMEOUT_COUNTDOWN_S down to 0 inclusive. Each
         // tick clears the two NN cells and draws the new digits;
@@ -645,6 +722,9 @@ impl<'a> BootloaderScene<'a> {
             let ones = ((secs % 10) as u8 + b'0') as char;
             self.renderer.draw_glyph(tens, nn_col, countdown_row);
             self.renderer.draw_glyph(ones, nn_col + 1, countdown_row);
+            // The digits are the visible state — refresh per tick is
+            // the per-second cadence of the countdown.
+            self.refresh();
 
             if secs == 0 {
                 break;
@@ -660,6 +740,7 @@ impl<'a> BootloaderScene<'a> {
             row: halt_row,
             timestamp_ms: *self.clock_ms,
         });
+        self.refresh();
         stall(self.clock_ms, ERROR_HALT_MS);
 
         uefi::runtime::reset(

@@ -269,6 +269,130 @@ pub(crate) fn encode(
     Ok(pos)
 }
 
+/// Maximum on-wire size of a single TLV record across all event
+/// variants. Used as the stack-buffer size in `event_tlv_bytes`.
+/// `ModeSwitch` is the largest at 18 bytes.
+pub(crate) const MAX_RECORD_SIZE: usize = 18;
+
+/// Encode a single event as a TLV record into `buf`. Returns the
+/// number of bytes written. The buffer must be at least
+/// `MAX_RECORD_SIZE` bytes (18); the caller provides it as a fixed
+/// `[u8; MAX_RECORD_SIZE]` so the size invariant is enforced at
+/// compile time.
+///
+/// This is the single source of truth for "what bytes does a given
+/// event produce on the wire". Both `write_record` (the encoder) and
+/// `ChannelHashes::update` (the rolling-hash updater) call through
+/// here so the bytes they see are identical by construction — drift
+/// between "what was encoded" and "what was hashed" is prevented at
+/// the API boundary rather than by convention.
+pub(crate) fn event_tlv_bytes(event: &Event, buf: &mut [u8; MAX_RECORD_SIZE]) -> usize {
+    let total = size_of_record(event);
+    let value_len = (total - 2) as u8;
+    match event {
+        Event::Keypress {
+            unicode,
+            scancode,
+            timestamp_ms,
+        } => {
+            buf[0] = TAG_KEYPRESS;
+            buf[1] = value_len;
+            buf[2..10].copy_from_slice(&timestamp_ms.to_le_bytes());
+            // `char as u32` then truncate to u16. Production input is
+            // ASCII; supplementary-plane code points would be lossy but
+            // this codebase never emits them.
+            let unicode_u16 = (*unicode as u32) as u16;
+            buf[10..12].copy_from_slice(&unicode_u16.to_le_bytes());
+            buf[12..14].copy_from_slice(&scancode.to_le_bytes());
+            14
+        }
+        Event::LineRendered { row, timestamp_ms } => {
+            buf[0] = TAG_LINE_RENDERED;
+            buf[1] = value_len;
+            buf[2..10].copy_from_slice(&timestamp_ms.to_le_bytes());
+            let row_u16 = *row as u16;
+            buf[10..12].copy_from_slice(&row_u16.to_le_bytes());
+            12
+        }
+        Event::SceneTransition {
+            from,
+            to,
+            timestamp_ms,
+        } => {
+            buf[0] = TAG_SCENE_TRANSITION;
+            buf[1] = value_len;
+            buf[2..10].copy_from_slice(&timestamp_ms.to_le_bytes());
+            buf[10] = phase_wire(*from);
+            buf[11] = phase_wire(*to);
+            12
+        }
+        Event::BootloaderDecision {
+            choice,
+            attempt,
+            timestamp_ms,
+        } => {
+            buf[0] = TAG_BOOTLOADER_DECISION;
+            buf[1] = value_len;
+            buf[2..10].copy_from_slice(&timestamp_ms.to_le_bytes());
+            buf[10] = choice_wire(*choice);
+            buf[11..15].copy_from_slice(&attempt.to_le_bytes());
+            15
+        }
+        Event::PasteReceived {
+            len,
+            correct,
+            timestamp_ms,
+        } => {
+            buf[0] = TAG_PASTE_RECEIVED;
+            buf[1] = value_len;
+            buf[2..10].copy_from_slice(&timestamp_ms.to_le_bytes());
+            let len_u16 = *len as u16;
+            buf[10..12].copy_from_slice(&len_u16.to_le_bytes());
+            buf[12] = u8::from(*correct);
+            13
+        }
+        Event::BootloaderTimeout { timestamp_ms } => {
+            buf[0] = TAG_BOOTLOADER_TIMEOUT;
+            buf[1] = value_len;
+            buf[2..10].copy_from_slice(&timestamp_ms.to_le_bytes());
+            10
+        }
+        Event::ModeSwitch {
+            requested_w,
+            requested_h,
+            applied_w,
+            applied_h,
+            timestamp_ms,
+        } => {
+            buf[0] = TAG_MODE_SWITCH;
+            buf[1] = value_len;
+            buf[2..10].copy_from_slice(&timestamp_ms.to_le_bytes());
+            // OVMF modes are well under u16::MAX; truncation is safe.
+            let rw = *requested_w as u16;
+            let rh = *requested_h as u16;
+            let aw = *applied_w as u16;
+            let ah = *applied_h as u16;
+            buf[10..12].copy_from_slice(&rw.to_le_bytes());
+            buf[12..14].copy_from_slice(&rh.to_le_bytes());
+            buf[14..16].copy_from_slice(&aw.to_le_bytes());
+            buf[16..18].copy_from_slice(&ah.to_le_bytes());
+            18
+        }
+        Event::ModeCycle {
+            count,
+            interrupted,
+            timestamp_ms,
+        } => {
+            buf[0] = TAG_MODE_CYCLE;
+            buf[1] = value_len;
+            buf[2..10].copy_from_slice(&timestamp_ms.to_le_bytes());
+            buf[10..14].copy_from_slice(&count.to_le_bytes());
+            buf[14] = u8::from(*interrupted);
+            15
+        }
+    }
+}
+
 /// Write a single TLV record into `out` starting at `pos`. Returns
 /// the new write position. Errors with `InternalOverflow` if the
 /// caller's bookkeeping was off (should never happen — `encode`
@@ -282,107 +406,8 @@ fn write_record(
     if pos + total > out.len() {
         return Err(EncodeError::InternalOverflow);
     }
-    let value_len = (total - 2) as u8;
-    match event {
-        Event::Keypress {
-            unicode,
-            scancode,
-            timestamp_ms,
-        } => {
-            out[pos] = TAG_KEYPRESS;
-            out[pos + 1] = value_len;
-            out[pos + 2..pos + 10].copy_from_slice(&timestamp_ms.to_le_bytes());
-            // `char as u32` then truncate to u16. Production input is
-            // ASCII; supplementary-plane code points would be lossy but
-            // this codebase never emits them.
-            let unicode_u16 = (*unicode as u32) as u16;
-            out[pos + 10..pos + 12].copy_from_slice(&unicode_u16.to_le_bytes());
-            out[pos + 12..pos + 14].copy_from_slice(&scancode.to_le_bytes());
-            Ok(pos + 14)
-        }
-        Event::LineRendered { row, timestamp_ms } => {
-            out[pos] = TAG_LINE_RENDERED;
-            out[pos + 1] = value_len;
-            out[pos + 2..pos + 10].copy_from_slice(&timestamp_ms.to_le_bytes());
-            let row_u16 = *row as u16;
-            out[pos + 10..pos + 12].copy_from_slice(&row_u16.to_le_bytes());
-            Ok(pos + 12)
-        }
-        Event::SceneTransition {
-            from,
-            to,
-            timestamp_ms,
-        } => {
-            out[pos] = TAG_SCENE_TRANSITION;
-            out[pos + 1] = value_len;
-            out[pos + 2..pos + 10].copy_from_slice(&timestamp_ms.to_le_bytes());
-            out[pos + 10] = phase_wire(*from);
-            out[pos + 11] = phase_wire(*to);
-            Ok(pos + 12)
-        }
-        Event::BootloaderDecision {
-            choice,
-            attempt,
-            timestamp_ms,
-        } => {
-            out[pos] = TAG_BOOTLOADER_DECISION;
-            out[pos + 1] = value_len;
-            out[pos + 2..pos + 10].copy_from_slice(&timestamp_ms.to_le_bytes());
-            out[pos + 10] = choice_wire(*choice);
-            out[pos + 11..pos + 15].copy_from_slice(&attempt.to_le_bytes());
-            Ok(pos + 15)
-        }
-        Event::PasteReceived {
-            len,
-            correct,
-            timestamp_ms,
-        } => {
-            out[pos] = TAG_PASTE_RECEIVED;
-            out[pos + 1] = value_len;
-            out[pos + 2..pos + 10].copy_from_slice(&timestamp_ms.to_le_bytes());
-            let len_u16 = *len as u16;
-            out[pos + 10..pos + 12].copy_from_slice(&len_u16.to_le_bytes());
-            out[pos + 12] = u8::from(*correct);
-            Ok(pos + 13)
-        }
-        Event::BootloaderTimeout { timestamp_ms } => {
-            out[pos] = TAG_BOOTLOADER_TIMEOUT;
-            out[pos + 1] = value_len;
-            out[pos + 2..pos + 10].copy_from_slice(&timestamp_ms.to_le_bytes());
-            Ok(pos + 10)
-        }
-        Event::ModeSwitch {
-            requested_w,
-            requested_h,
-            applied_w,
-            applied_h,
-            timestamp_ms,
-        } => {
-            out[pos] = TAG_MODE_SWITCH;
-            out[pos + 1] = value_len;
-            out[pos + 2..pos + 10].copy_from_slice(&timestamp_ms.to_le_bytes());
-            // OVMF modes are well under u16::MAX; truncation is safe.
-            let rw = *requested_w as u16;
-            let rh = *requested_h as u16;
-            let aw = *applied_w as u16;
-            let ah = *applied_h as u16;
-            out[pos + 10..pos + 12].copy_from_slice(&rw.to_le_bytes());
-            out[pos + 12..pos + 14].copy_from_slice(&rh.to_le_bytes());
-            out[pos + 14..pos + 16].copy_from_slice(&aw.to_le_bytes());
-            out[pos + 16..pos + 18].copy_from_slice(&ah.to_le_bytes());
-            Ok(pos + 18)
-        }
-        Event::ModeCycle {
-            count,
-            interrupted,
-            timestamp_ms,
-        } => {
-            out[pos] = TAG_MODE_CYCLE;
-            out[pos + 1] = value_len;
-            out[pos + 2..pos + 10].copy_from_slice(&timestamp_ms.to_le_bytes());
-            out[pos + 10..pos + 14].copy_from_slice(&count.to_le_bytes());
-            out[pos + 14] = u8::from(*interrupted);
-            Ok(pos + 15)
-        }
-    }
+    let mut buf = [0u8; MAX_RECORD_SIZE];
+    let written = event_tlv_bytes(event, &mut buf);
+    out[pos..pos + written].copy_from_slice(&buf[..written]);
+    Ok(pos + written)
 }

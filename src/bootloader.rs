@@ -36,7 +36,7 @@
 
 use crate::event::{BootloaderChoice, Event, RingBuffer};
 use crate::renderer::Renderer;
-use crate::scene::{poll_key, stall, DigestRefresher, PACE_LINE_MS, POLL_MS};
+use crate::scene::{poll_key, stall, ChannelHashes, DigestRefresher, PACE_LINE_MS, POLL_MS};
 
 /// Maximum length of the paste capture buffer in bytes.
 ///
@@ -99,6 +99,13 @@ struct BootloaderScene<'a> {
     /// fire `refresh` calls at its own visible-state-change points
     /// without holding a reference to `Scene`.
     digest_refresher: &'a mut DigestRefresher,
+    /// The scene's per-channel rolling CRC32C accumulators. Every
+    /// `ring.push` call site in this module also calls
+    /// `channel_hashes.update(&event)` so the hashes stay in
+    /// lock-step with every event push regardless of which
+    /// sub-state-machine emits it. Threaded in from `bootloader::run`
+    /// which receives it from `Scene::run_booting`.
+    channel_hashes: &'a mut ChannelHashes,
     /// First row of the bootloader scene region (passed in from the
     /// caller; the telemetry preamble lines render on this row and
     /// `start_row + 1`).
@@ -145,6 +152,7 @@ pub fn run(
     ring: &mut RingBuffer<256>,
     clock_ms: &mut u64,
     digest_refresher: &mut DigestRefresher,
+    channel_hashes: &mut ChannelHashes,
     start_row: usize,
 ) -> BootloaderOutcome {
     let mut scene = BootloaderScene {
@@ -152,6 +160,7 @@ pub fn run(
         ring,
         clock_ms,
         digest_refresher,
+        channel_hashes,
         start_row,
         highest_row: start_row,
         prompt_attempt: 0,
@@ -189,6 +198,19 @@ impl<'a> BootloaderScene<'a> {
         self.digest_refresher.refresh(self.renderer, &*self.ring);
     }
 
+    /// Push an event into the ring buffer and update the per-channel
+    /// rolling CRC32C accumulator for that event's variant.
+    ///
+    /// This is the single push path for all bootloader event emission
+    /// sites. Mirrors `Scene::push_event` — the same ordering
+    /// (`channel_hashes.update` before `ring.push`) is used so that
+    /// if a debugger snapshots state between the two calls, the hash
+    /// leads the ring (slightly more diagnostic than lagging).
+    fn push_event(&mut self, event: Event) {
+        self.channel_hashes.update(&event);
+        self.ring.push(event);
+    }
+
     /// Render the two telemetry preamble lines that establish the
     /// scene's diegetic failure: b64 coprocessor OFFLINE and NIST
     /// 800-53 SC-28(1) Secret hardening DISABLED BY CONFIGURATION.
@@ -201,7 +223,7 @@ impl<'a> BootloaderScene<'a> {
             "OFFLINE",
             row1,
         );
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: row1,
             timestamp_ms: *self.clock_ms,
         });
@@ -215,7 +237,7 @@ impl<'a> BootloaderScene<'a> {
             "DISABLED BY CONFIGURATION",
             row2,
         );
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: row2,
             timestamp_ms: *self.clock_ms,
         });
@@ -258,7 +280,7 @@ impl<'a> BootloaderScene<'a> {
             self.renderer.draw_glyph(')', col, self.prompt_row);
         }
 
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: self.prompt_row,
             timestamp_ms: *self.clock_ms,
         });
@@ -288,7 +310,7 @@ impl<'a> BootloaderScene<'a> {
     fn render_nudge(&mut self) {
         const NUDGE: &str = "Continued retry will not change the outcome.";
         self.renderer.draw_text_at(NUDGE, 0, self.nudge_row);
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: self.nudge_row,
             timestamp_ms: *self.clock_ms,
         });
@@ -314,7 +336,7 @@ impl<'a> BootloaderScene<'a> {
                 if let Some((ch, sc)) = poll_key() {
                     // Always emit the existing Keypress event so the
                     // serial drain reflects every actual keystroke.
-                    self.ring.push(Event::Keypress {
+                    self.push_event(Event::Keypress {
                         unicode: ch,
                         scancode: sc,
                         timestamp_ms: *self.clock_ms,
@@ -332,7 +354,7 @@ impl<'a> BootloaderScene<'a> {
             // Record the decision before taking any action so the
             // serial drain gets a chance to capture it (modulo the
             // Abort cold-reset caveat noted below).
-            self.ring.push(Event::BootloaderDecision {
+            self.push_event(Event::BootloaderDecision {
                 choice,
                 attempt: self.prompt_attempt,
                 timestamp_ms: *self.clock_ms,
@@ -435,7 +457,7 @@ impl<'a> BootloaderScene<'a> {
             0,
             intro_row,
         );
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: intro_row,
             timestamp_ms: *self.clock_ms,
         });
@@ -446,7 +468,7 @@ impl<'a> BootloaderScene<'a> {
 
         // Encoded blob.
         self.renderer.draw_text_at(ENCODED_BLOB, 0, blob_row);
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: blob_row,
             timestamp_ms: *self.clock_ms,
         });
@@ -459,7 +481,7 @@ impl<'a> BootloaderScene<'a> {
         // `input_col_start` onward.
         const INPUT_PROMPT: &str = "Awaiting decoded payload> ";
         self.renderer.draw_text_at(INPUT_PROMPT, 0, input_row);
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: input_row,
             timestamp_ms: *self.clock_ms,
         });
@@ -471,7 +493,7 @@ impl<'a> BootloaderScene<'a> {
         loop {
             match self.capture_paste(input_row, input_col_start) {
                 PasteOutcome::Correct(len) => {
-                    self.ring.push(Event::PasteReceived {
+                    self.push_event(Event::PasteReceived {
                         len,
                         correct: true,
                         timestamp_ms: *self.clock_ms,
@@ -485,7 +507,7 @@ impl<'a> BootloaderScene<'a> {
                     return self.run_success();
                 }
                 PasteOutcome::Wrong(len) => {
-                    self.ring.push(Event::PasteReceived {
+                    self.push_event(Event::PasteReceived {
                         len,
                         correct: false,
                         timestamp_ms: *self.clock_ms,
@@ -507,7 +529,7 @@ impl<'a> BootloaderScene<'a> {
                     // `input_col_start` with no row contention.
                     self.renderer.clear_row(input_row);
                     self.renderer.draw_text_at(INPUT_PROMPT, 0, input_row);
-                    self.ring.push(Event::LineRendered {
+                    self.push_event(Event::LineRendered {
                         row: input_row,
                         timestamp_ms: *self.clock_ms,
                     });
@@ -541,7 +563,7 @@ impl<'a> BootloaderScene<'a> {
                     }
                     self.renderer.draw_glyph(')', col, self.wrong_indicator_row);
                     self.note_row(self.wrong_indicator_row);
-                    self.ring.push(Event::LineRendered {
+                    self.push_event(Event::LineRendered {
                         row: self.wrong_indicator_row,
                         timestamp_ms: *self.clock_ms,
                     });
@@ -577,7 +599,7 @@ impl<'a> BootloaderScene<'a> {
 
             if let Some((ch, sc)) = poll_key() {
                 idle_ms = 0;
-                self.ring.push(Event::Keypress {
+                self.push_event(Event::Keypress {
                     unicode: ch,
                     scancode: sc,
                     timestamp_ms: *self.clock_ms,
@@ -656,7 +678,7 @@ impl<'a> BootloaderScene<'a> {
         self.refresh();
         let booting_row = self.start_row + 2;
         self.renderer.draw_text_at("Booting...", 0, booting_row);
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: booting_row,
             timestamp_ms: *self.clock_ms,
         });
@@ -687,7 +709,7 @@ impl<'a> BootloaderScene<'a> {
             );
         }
 
-        self.ring.push(Event::BootloaderTimeout {
+        self.push_event(Event::BootloaderTimeout {
             timestamp_ms: *self.clock_ms,
         });
 
@@ -736,7 +758,7 @@ impl<'a> BootloaderScene<'a> {
         let halt_row = countdown_row + 2;
         self.renderer
             .draw_text_at("BOOTLOADER UNRECOVERABLE. SHUTTING DOWN.", 0, halt_row);
-        self.ring.push(Event::LineRendered {
+        self.push_event(Event::LineRendered {
             row: halt_row,
             timestamp_ms: *self.clock_ms,
         });

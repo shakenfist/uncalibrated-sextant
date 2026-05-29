@@ -21,6 +21,7 @@ use core::time::Duration;
 
 use crate::bootloader;
 use crate::cursor::CursorState;
+use crate::digest::{event_tlv_bytes, CRC32C, MAX_RECORD_SIZE};
 use crate::event::{Event, Phase, RingBuffer};
 use crate::renderer::Renderer;
 use crate::serial;
@@ -153,6 +154,136 @@ impl DigestRefresher {
 
         let tsc_end = read_tsc();
         self.stats.record(tsc_end.saturating_sub(tsc_start));
+    }
+}
+
+/// Per-channel rolling CRC32C accumulators; one per event variant.
+///
+/// Each field accumulates CRC32C over every TLV-encoded event of that
+/// variant since boot, in push order. The hash is updated on every
+/// `push_event` call and stored as the _finalized_ CRC32C value
+/// (i.e., the value `Digest::finalize()` returns). An empty channel
+/// carries `0x00000000` — the CRC32C of zero bytes.
+///
+/// ## Chaining invariant
+///
+/// CRC_32_ISCSI (`refin=true`, `refout=true`, `xorout=0xFFFFFFFF`):
+/// given a finalized value `f`, the internal pre-finalization state is
+/// `raw = f ^ 0xFFFF_FFFF`. Because `init()` applies
+/// `initial.reverse_bits()` (for `refin=true`), the correct argument
+/// to `Crc::digest_with_initial` for resuming from `f` is
+/// `(f ^ 0xFFFF_FFFF).reverse_bits()`. The `update_channel` method
+/// encapsulates this so callers stay algorithm-agnostic.
+///
+/// ## Field naming
+///
+/// Named fields (one per `Event` variant) rather than an indexed
+/// array. Named fields are self-documenting at each call site, let
+/// the compiler enforce completeness in `update`, and make step 2c's
+/// encoder read-path (`channel_hashes.keypress`, etc.) explicit.
+/// The tag-indexed array alternative would require a safe mapping from
+/// `TAG_*` constants to array indices; the named approach avoids that
+/// indirection at the cost of eight field names instead of an indexing
+/// expression.
+///
+/// ## Reachability
+///
+/// All eight fields are read by `ChannelHashes::update` (write path)
+/// and will be consumed by the step-2c TLV encoder. No
+/// `#[allow(dead_code)]` annotation is added; if a field appears dead
+/// before 2c lands, that is expected and benign — the compiler will
+/// not warn because `update` writes every field on every matching push.
+pub(crate) struct ChannelHashes {
+    /// Running CRC32C over all `Event::Keypress` TLV records (tag 0x01).
+    pub(crate) keypress: u32,
+    /// Running CRC32C over all `Event::LineRendered` TLV records (tag 0x02).
+    pub(crate) line_rendered: u32,
+    /// Running CRC32C over all `Event::SceneTransition` TLV records (tag 0x03).
+    pub(crate) scene_transition: u32,
+    /// Running CRC32C over all `Event::BootloaderDecision` TLV records (tag 0x04).
+    pub(crate) bootloader_decision: u32,
+    /// Running CRC32C over all `Event::PasteReceived` TLV records (tag 0x05).
+    pub(crate) paste_received: u32,
+    /// Running CRC32C over all `Event::BootloaderTimeout` TLV records (tag 0x06).
+    pub(crate) bootloader_timeout: u32,
+    /// Running CRC32C over all `Event::ModeSwitch` TLV records (tag 0x07).
+    pub(crate) mode_switch: u32,
+    /// Running CRC32C over all `Event::ModeCycle` TLV records (tag 0x08).
+    pub(crate) mode_cycle: u32,
+}
+
+impl ChannelHashes {
+    /// Initialise all eight accumulators to the CRC32C of zero bytes
+    /// (`0x00000000` — the finalized value of an empty `Digest`).
+    pub(crate) const fn new() -> Self {
+        Self {
+            keypress: 0,
+            line_rendered: 0,
+            scene_transition: 0,
+            bootloader_decision: 0,
+            paste_received: 0,
+            bootloader_timeout: 0,
+            mode_switch: 0,
+            mode_cycle: 0,
+        }
+    }
+
+    /// Compute the `digest_with_initial` argument required to resume a
+    /// CRC_32_ISCSI (`refin=true`, `refout=true`, `xorout=0xFFFF_FFFF`)
+    /// stream from a previously-finalized value.
+    ///
+    /// `finalize` applied `raw ^ xorout`, so `raw = f ^ xorout`.
+    /// `init` applies `initial.reverse_bits()` (for `refin=true`), so
+    /// the `digest_with_initial` argument is `raw.reverse_bits()`.
+    #[inline]
+    fn resume_initial(finalized: u32) -> u32 {
+        (finalized ^ 0xFFFF_FFFF).reverse_bits()
+    }
+
+    /// Extend one channel's running CRC32C with the TLV bytes of
+    /// `event` and return the new finalized value.
+    #[inline]
+    fn extend(current: u32, event: &Event) -> u32 {
+        let mut buf = [0u8; MAX_RECORD_SIZE];
+        let len = event_tlv_bytes(event, &mut buf);
+        let mut d = CRC32C.digest_with_initial(Self::resume_initial(current));
+        d.update(&buf[..len]);
+        d.finalize()
+    }
+
+    /// Update the accumulator for the channel matching `event`'s variant.
+    ///
+    /// Dispatches on the event variant and extends the corresponding
+    /// field via `extend`. Every variant is covered so the compiler
+    /// enforces completeness; if a new `Event` variant is added without
+    /// updating this match, the code will not compile.
+    pub(crate) fn update(&mut self, event: &Event) {
+        match event {
+            Event::Keypress { .. } => {
+                self.keypress = Self::extend(self.keypress, event);
+            }
+            Event::LineRendered { .. } => {
+                self.line_rendered = Self::extend(self.line_rendered, event);
+            }
+            Event::SceneTransition { .. } => {
+                self.scene_transition = Self::extend(self.scene_transition, event);
+            }
+            Event::BootloaderDecision { .. } => {
+                self.bootloader_decision = Self::extend(self.bootloader_decision, event);
+            }
+            Event::PasteReceived { .. } => {
+                self.paste_received = Self::extend(self.paste_received, event);
+            }
+            Event::BootloaderTimeout { .. } => {
+                self.bootloader_timeout = Self::extend(self.bootloader_timeout, event);
+            }
+            Event::ModeSwitch { .. } => {
+                self.mode_switch = Self::extend(self.mode_switch, event);
+            }
+            Event::ModeCycle { .. } => {
+                self.mode_cycle = Self::extend(self.mode_cycle, event);
+            }
+        }
     }
 }
 
@@ -416,6 +547,14 @@ pub struct Scene {
     /// so the sub-state-machine can fire refreshes at its own
     /// visible-state-change points.
     digest_refresher: DigestRefresher,
+    /// Per-channel rolling CRC32C accumulators. Updated in lock-step
+    /// with every `push_event` call so the hashes cover every event
+    /// since boot, including events that have been evicted from the
+    /// fixed-capacity ring buffer. Threaded into `bootloader::run`
+    /// (alongside `digest_refresher`) so the sub-state-machine's
+    /// pushes also update the hashes. Step 2c will read these fields
+    /// to emit the per-channel hash TLV records in the wire payload.
+    channel_hashes: ChannelHashes,
 }
 
 impl Scene {
@@ -429,7 +568,23 @@ impl Scene {
             repaint_state: RepaintState::Chrome,
             toast: None,
             digest_refresher: DigestRefresher::new(),
+            channel_hashes: ChannelHashes::new(),
         }
+    }
+
+    /// Push an event into the ring buffer and update the per-channel
+    /// rolling CRC32C accumulator for that event's variant.
+    ///
+    /// This is the single push path for all `Scene`-owned event
+    /// emission sites. Every `ring.push(event)` call in `scene.rs`
+    /// routes through here so that `channel_hashes` stays in
+    /// lock-step with the ring. The bootloader sub-state-machine
+    /// receives `&mut ChannelHashes` threaded through
+    /// `bootloader::run` and updates it directly alongside its own
+    /// `ring.push` calls — see `bootloader.rs` for those sites.
+    fn push_event(&mut self, event: Event) {
+        self.channel_hashes.update(&event);
+        self.ring.push(event);
     }
 
     /// Run the full scene to completion, then ACPI-shutdown.
@@ -525,7 +680,7 @@ impl Scene {
         self.refresh_digest(renderer);
 
         self.blink_until_key(renderer, CURSOR_COL, CURSOR_ROW, |scene| {
-            scene.ring.push(Event::SceneTransition {
+            scene.push_event(Event::SceneTransition {
                 from: Phase::Awaiting,
                 to: Phase::Booting,
                 timestamp_ms: scene.clock_ms,
@@ -577,6 +732,7 @@ impl Scene {
             &mut self.ring,
             &mut self.clock_ms,
             &mut self.digest_refresher,
+            &mut self.channel_hashes,
             row,
         );
         row = next_row;
@@ -597,7 +753,7 @@ impl Scene {
             }
         });
 
-        self.ring.push(Event::SceneTransition {
+        self.push_event(Event::SceneTransition {
             from: Phase::Booting,
             to: Phase::Parked,
             timestamp_ms: self.clock_ms,
@@ -627,7 +783,7 @@ impl Scene {
             match step {
                 SceneStep::Telemetry { label, status } => {
                     renderer.draw_telemetry_line(label, status, row);
-                    self.ring.push(Event::LineRendered {
+                    self.push_event(Event::LineRendered {
                         row,
                         timestamp_ms: self.clock_ms,
                     });
@@ -638,7 +794,7 @@ impl Scene {
                 }
                 SceneStep::Line(text) => {
                     renderer.draw_line(text, row);
-                    self.ring.push(Event::LineRendered {
+                    self.push_event(Event::LineRendered {
                         row,
                         timestamp_ms: self.clock_ms,
                     });
@@ -660,7 +816,7 @@ impl Scene {
                         *status_width_px,
                         row,
                     );
-                    self.ring.push(Event::LineRendered {
+                    self.push_event(Event::LineRendered {
                         row,
                         timestamp_ms: self.clock_ms,
                     });
@@ -880,7 +1036,7 @@ impl Scene {
             stall(&mut self.clock_ms, POLL_MS);
 
             if let Some((ch, sc)) = poll_key() {
-                self.ring.push(Event::Keypress {
+                self.push_event(Event::Keypress {
                     unicode: ch,
                     scancode: sc,
                     timestamp_ms: self.clock_ms,
@@ -914,7 +1070,7 @@ impl Scene {
         'outer: for (w, h) in modes {
             // Apply this step.
             let (applied_w, applied_h) = renderer.set_mode(w, h);
-            self.ring.push(Event::ModeSwitch {
+            self.push_event(Event::ModeSwitch {
                 requested_w: w as u32,
                 requested_h: h as u32,
                 applied_w: applied_w as u32,
@@ -933,7 +1089,7 @@ impl Scene {
             let mut elapsed: u64 = 0;
             while elapsed < CYCLE_DWELL_MS {
                 if let Some((ch, sc)) = poll_key() {
-                    self.ring.push(Event::Keypress {
+                    self.push_event(Event::Keypress {
                         unicode: ch,
                         scancode: sc,
                         timestamp_ms: self.clock_ms,
@@ -947,7 +1103,7 @@ impl Scene {
             }
         }
 
-        self.ring.push(Event::ModeCycle {
+        self.push_event(Event::ModeCycle {
             count,
             interrupted: interrupted_by.is_some(),
             timestamp_ms: self.clock_ms,
@@ -976,7 +1132,7 @@ impl Scene {
         while elapsed < total_ms {
             let chunk = POLL_MS.min(total_ms - elapsed);
             if let Some((ch, sc)) = poll_key() {
-                self.ring.push(Event::Keypress {
+                self.push_event(Event::Keypress {
                     unicode: ch,
                     scancode: sc,
                     timestamp_ms: self.clock_ms,
@@ -1016,7 +1172,7 @@ impl Scene {
             return false;
         };
         let (applied_w, applied_h) = renderer.set_mode(req_w as usize, req_h as usize);
-        self.ring.push(Event::ModeSwitch {
+        self.push_event(Event::ModeSwitch {
             requested_w: req_w,
             requested_h: req_h,
             applied_w: applied_w as u32,
@@ -1085,7 +1241,7 @@ impl Scene {
         self.blink_until_key(renderer, cursor_col, cursor_row, |scene| {
             // Non-mode key — Parked → Parked transition signals
             // the final keypress that exits the parking loop.
-            scene.ring.push(Event::SceneTransition {
+            scene.push_event(Event::SceneTransition {
                 from: Phase::Parked,
                 to: Phase::Parked,
                 timestamp_ms: scene.clock_ms,

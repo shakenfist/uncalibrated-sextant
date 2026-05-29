@@ -358,7 +358,7 @@ them drift.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Refresh cadence + coverage (per-line, AWAITING, bootloader carve-out replacement) + path-A cost measurement | PLAN-continuous-digest-phase-01-cadence.md | Not started |
+| 1. Refresh cadence + coverage (per-line, AWAITING, bootloader carve-out replacement) + path-A cost measurement | [PLAN-continuous-digest-phase-01-cadence.md](PLAN-continuous-digest-phase-01-cadence.md) | Complete (commits 8814fab through 06f6d1c). Bail-out criterion PASS at 3.1% overhead (74 refreshes / 434 ms over a ~14 s smoke transcript). |
 | 2. Multi-channel TLV + capacity decision (V5/L vs V10/L) | PLAN-continuous-digest-phase-02-multi-channel.md | Not started |
 | 3. Docs, decoder coordination, closeout | PLAN-continuous-digest-phase-03-closeout.md | Not started |
 

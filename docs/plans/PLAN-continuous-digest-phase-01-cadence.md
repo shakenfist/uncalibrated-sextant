@@ -414,9 +414,76 @@ Phase 2 (multi-channel TLV) may proceed.
 
 ## Closeout
 
-(Populated by step 1h. Should include: commit range,
-measurement results, bail-out result, any deviations from the
-plan, links to follow-up plans if applicable.)
+**Status: Complete.** Commit range `8814fab` through `06f6d1c`
+(inclusive). All seven implementation steps landed; no
+follow-up plans required.
+
+### Commit map
+
+| Step | Commit  | Title |
+|------|---------|-------|
+| 1a   | 8814fab | Add refresh_digest measurement scaffold. |
+| 1b   | 4946099 | Record baseline refresh_stats numbers. |
+| 1c   | 6ab1309 | Refresh digest per painted line in play_script. |
+| 1d   | 27e0a6a | Refresh digest on blink transitions + PARKED initial. |
+| 1e   | d1baa0c | Remove bootloader carve-out from refresh_digest. |
+| 1f   | f475cb2 | Add bootloader scene refresh points. |
+| 1g   | 06f6d1c | Record post-change refresh_stats + bail-out PASS. |
+
+### Measurement result
+
+Bail-out criterion: **PASS** at ~3.1% transcript overhead
+(74 refreshes / 434 ms over a ~14 s smoke scene). Detailed
+numbers in the *Measurements* section above. Phase 2
+(multi-channel TLV) may proceed.
+
+### Decisions made during execution
+
+- **Measurement mechanism:** rdtsc (no fallback needed).
+  `core::arch::x86_64::_rdtsc` is stable on Rust 1.88 /
+  x86_64-unknown-uefi; no nightly features, no protocol
+  opens. Calibrated once at `Scene::run` entry against a
+  100 ms `uefi::boot::stall`.
+- **Bootloader refresh-routing shape:** introduced a
+  `DigestRefresher` struct in `src/scene.rs` that owns the
+  frame counter, TSC calibration, and refresh stats (three
+  fields lifted off `Scene`). `bootloader::run` gained a
+  `&mut DigestRefresher` argument; `BootloaderScene` stores
+  it and exposes a small `refresh()` helper that re-borrows
+  `&*self.ring` to satisfy the borrow checker.
+  `Scene::refresh_digest` survives as a thin wrapper so all
+  existing call sites compile unchanged.
+
+### Consolidation decisions in `src/bootloader.rs`
+
+Two cases where the brief allowed consolidation:
+
+- **`render_prompt` + `render_nudge`:** chose "nudge always
+  refreshes; prompt suppresses its own refresh when it ends
+  by re-rendering the nudge." Avoids a double refresh on the
+  retry-with-sticky-nudge path; rationale documented in both
+  function doc comments.
+- **Wrong-paste re-render block** (input prompt + wrong
+  indicator): single refresh at the end of the block instead
+  of two. These are immediately-adjacent draws with no key
+  polling between them; a single refresh is semantically
+  equivalent. Documented inline at the call site.
+
+### Deviations from the plan
+
+None substantive. All refresh-point sites from the parent
+plan's *Bootloader refresh-point placement* default and the
+phase plan's *Bootloader refresh-point list, finalised* open
+question landed. The two consolidations above are within the
+brief's "you may consolidate immediately-adjacent calls"
+allowance.
+
+### Follow-ups
+
+None opened. Phase 2 follows directly. The server-side debug
+logging future-work item recorded on the parent plan
+(commit f281903) is independent of phase 1's outcome and
+can be picked up at any time.
 
 ## Back brief
 

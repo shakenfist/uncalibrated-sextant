@@ -255,7 +255,7 @@ them drift.
   92-byte TLV body has ~62 bytes left for raw events. That's
   ~10 small events. Two options: **(a)** stay at V5/L, cap
   raw events at "last 8 that fit", treat the rolling hashes
-  as the primary diagnostic; **(b)** bump to V10/L (~213
+  as the primary diagnostic; **(b)** bump to V10/L (271
   bytes) to comfortably carry rolling hashes + ~30 raw
   events. V10 is ~57×57 modules vs V5's 37×37 — at our
   current 4-pixel-per-module scale that's 228×228 px vs
@@ -300,9 +300,9 @@ them drift.
     currently need), or port the encoder ourselves — a
     multi-week side quest for a no_std target.
   - *Capacity headroom we do not need.* V10/L (this plan's
-    bump) carries 213 bytes, sufficient for ~10 channels'
+    bump) carries 271 bytes, sufficient for ~10 channels'
     worth of rolling hashes plus ~25 raw events. QR scales to
-    V20/L = 666 bytes or V40/L = 2953 bytes before running
+    V20/L = 858 bytes or V40/L = 2953 bytes before running
     out of the QR design space entirely. The density wall is
     far away.
 

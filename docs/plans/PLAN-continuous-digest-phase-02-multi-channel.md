@@ -180,31 +180,42 @@ Out of scope for phase 2:
 Defaults are strong but worth confirming. Capture changes
 inline.
 
-- **Capacity strategy (the headline decision).** **Default:
-  stay at V5/L and truncate raw events**, overturning the
-  parent plan's V10/L default. Reasoning: V10/L's 260×260 px
-  region at 4 px/module does not fit at 640×480 — the
-  bottom-right corner's available space is roughly 624×448
-  before clearing the logo (top-right) and toast row
-  (bottom), and the V10 region's Y range (≈188..448) and X
-  range (≈364..624) collide with the bootloader prompt row
-  (Y ≈ 384..400, X spans 0..592). V10 at 3 px/module trims
-  to 195 px but still overlaps. V10 at 2 px/module hits
-  zbarimg decode reliability concerns and is not on the
-  table.
+- **Capacity strategy (the headline decision).** **Decided
+  in step 2a (see *Step 2a — Capacity feasibility study*
+  below): stay at V5/L at 4 px/module and truncate raw
+  events. Eight rolling-hash records (48 bytes) plus 14
+  bytes header/trailer leave a 44-byte raw-event budget
+  (~3 records per frame); the rolling hashes are the
+  primary diagnostic and raw events are secondary
+  localisation context.** This overturns the parent plan's
+  V10/L default.
 
-  Intermediate versions (V6/L=134, V7/L=154, V8/L=192,
-  V9/L=230) deserve a quick check; V8/L at 4 px (49 + 8 =
-  57 modules × 4 = 228 px region) is the same conflict.
-  Even V6/L (45 modules + 8 = 53 × 4 = 212 px) overlaps
-  the prompt row's Y range at 640×480.
+  Reasoning summary (full analysis in the step 2a section):
+  every QR version+scale that fits the 640×480 corner at
+  ≥ 3 px/module overlaps the bootloader content rows at
+  least as badly as V5@4 already does, and the larger
+  bumps (V6+) additionally eat into the per-line refresh
+  region of the PRE-script transcript. The rolling-hash
+  mechanism makes a larger raw-event window unnecessary.
 
-  Step 2a does the formal evaluation and may overturn
-  this default. The fall-back to that fall-back — "mode-
-  aware QR version, V5 on small modes, V10 on large ones"
-  — is **rejected up-front**: payload size that varies by
-  mode means downstream decoders have to handle two budgets
-  and the cross-frame consistency story gets ugly.
+  Alternatives kept on the record:
+  - **V10/L at 4 px/module with a 640×480 content-layout
+    change** (shorter prompt, narrower echo, moved
+    countdown). Achievable but invasive; not justified
+    while the rolling hashes carry the diagnostic load.
+  - **V10/L at 3 px/module.** Triples the raw-event
+    budget (~14 events) at a 15 px region-size increase,
+    but trims decoder safety margin against capture noise.
+    Worth revisiting if rolling hashes prove insufficient
+    and a content-layout change is on the table anyway.
+  - **Intermediate V6–V9 at 4 px/module.** Each step up
+    obscures more of the PRE-script transcript without
+    proportionally improving the raw-event budget.
+  - **Mode-aware QR version (V5 on small modes, V10 on
+    large)** is **rejected up-front**: payload size that
+    varies by mode means downstream decoders have to handle
+    two budgets and the cross-frame consistency story gets
+    ugly.
 
 - **Which `Event` variants get per-channel rolling hashes?**
   **Default: hash all eight existing event tags** (Keypress,
@@ -378,11 +389,279 @@ Additionally:
   budget) does not panic; the encoder cleanly drops the
   oldest raw records.
 
+## Step 2a — Capacity feasibility study
+
+Formal evaluation of the capacity strategy raised in the
+parent plan's *TLV capacity strategy* open question and
+inherited as the headline decision for this phase. Numbers
+computed from QR Code 2005 / ISO/IEC 18004 Table 7 (ECC L,
+byte-mode), the `qrcodegen-no-heap` default 4-module quiet
+zone, and the renderer constants in `src/renderer/mod.rs`
+(`MARGIN_X = MARGIN_Y = 16`, `CELL_W = 8`, `CELL_H = 16`)
+combined with `src/bootloader.rs`'s row math.
+
+### Byte-mode capacities (Table 7, ECC L)
+
+| Version | Modules | Bytes |
+|---------|---------|-------|
+| V5      | 37      | 106   |
+| V6      | 41      | 134   |
+| V7      | 45      | 154   |
+| V8      | 49      | 192   |
+| V9      | 53      | 230   |
+| V10     | 57      | 271   |
+
+The parent plan quotes V10/L as 213 bytes. That figure is
+wrong. Table 7 gives V10/L = 271 bytes (and V15/L = 412,
+V20/L = 858, not 666 — the parent plan also has the V20/L
+figure off). `qrcodegen-no-heap`'s `Version::new(10)
+.buffer_len()` returns 196, but that is the encoder's
+codeword scratch buffer, not the user-visible payload
+capacity. Use 271 here; phase 3's docs sweep can fix the
+parent plan.
+
+### Geometry table
+
+Module count per version is `4*V + 17`. Region px is
+`(modules + 8) * px_per_module` (8 = 2 × 4-module quiet
+zone). At 640×480 right-anchored the origin is
+`region_x = 640 - 16 - region_px` (MARGIN_X = 16) and
+`region_y = 480 - 16 - 16 - region_px = 448 - region_px`
+(MARGIN_Y + CELL_H = 32, reserving the bottom toast row).
+Logo bottom edge sits at y = 144; `region_y >= 144` keeps
+the QR clear of it.
+
+| V | px/mod | modules | region_px | region_x | region_y | y ≥ 144 | x ≥ 0 | Decode-OK |
+|---|--------|---------|-----------|----------|----------|---------|-------|-----------|
+| 5  | 4 | 37 | 180 | 444 | 268 | yes | yes | yes |
+| 5  | 3 | 37 | 135 | 489 | 313 | yes | yes | yes |
+| 6  | 4 | 41 | 196 | 428 | 252 | yes | yes | yes |
+| 6  | 3 | 41 | 147 | 477 | 301 | yes | yes | yes |
+| 7  | 4 | 45 | 212 | 412 | 236 | yes | yes | yes |
+| 7  | 3 | 45 | 159 | 465 | 289 | yes | yes | yes |
+| 8  | 4 | 49 | 228 | 396 | 220 | yes | yes | yes |
+| 8  | 3 | 49 | 171 | 453 | 277 | yes | yes | yes |
+| 9  | 4 | 53 | 244 | 380 | 204 | yes | yes | yes |
+| 9  | 3 | 53 | 183 | 441 | 265 | yes | yes | yes |
+| 10 | 4 | 57 | 260 | 364 | 188 | yes | yes | yes |
+| 10 | 3 | 57 | 195 | 429 | 253 | yes | yes | yes |
+
+All twelve combinations clear the logo (y ≥ 144) and fit
+horizontally (x ≥ 0) at 640×480. The fit story is not the
+discriminator — content overlap is.
+
+### Decode-reliability note
+
+`zbarimg` and the rest of the QR decoder ecosystem need
+roughly three pixels per module to ride out scan-line noise
+and any host-side resampling between QEMU's framebuffer
+capture and decode. The 2 px/module scale that would
+otherwise let V10 fit comfortably is on the edge of that
+budget and is rejected up-front; the table above starts at
+3 px/module for that reason. 3 px/module is the floor for
+this analysis. 4 px/module is the current production scale
+and the safer default; 3 px/module is acceptable but worth
+re-validating with a screenshot smoke if it is chosen.
+
+### Bootloader content rows at 640×480
+
+Row math uses `start_row = 19` (the 19 PRE-script lines of
+`run_booting` advance `row` by 1 each), giving
+`prompt_row = countdown_row = start_row + 2 = 21`,
+`input_row = start_row + 6 = 25`, and
+`wrong_indicator_row = input_row + 1 = 26`. Pixel y range
+of row `R` is `[16 + R*16, 16 + (R+1)*16)` = a 16 px tall
+band.
+
+| Content                              | row | y range     | x range (content) |
+|--------------------------------------|-----|-------------|-------------------|
+| R/I/A prompt (74 chars)              | 21  | [352, 368)  | [16, 608)         |
+| Countdown header (same row as prompt)| 21  | [352, 368)  | [16, 608)         |
+| Paste echo, target len (23 chars)    | 25  | [416, 432)  | [224, 408)        |
+| Paste echo, buffer full (64 chars)   | 25  | [416, 432)  | [224, 736) (clipped at 640) |
+| Wrong-indicator                      | 26  | [432, 448)  | [16, ~352)        |
+
+(The 76-column terminal at 640×480 — `(640 - 32) / 8` —
+truncates the 64-char echo at ~50 chars visible, so the
+echo's effective right edge is ~640 px even though the
+buffer holds 64 chars.)
+
+### Overlap matrix (3 px and 4 px per module)
+
+For each fit-eligible (V, scale) the QR occupies
+`x ∈ [region_x, region_x + region_px)` and
+`y ∈ [region_y, region_y + region_px)`. An OVERLAP requires
+both x and y ranges to overlap the content's box.
+
+| V | px/mod | QR x range | QR y range | Prompt row 21 | Echo row 25 | Wrong row 26 |
+|---|--------|-----------|-----------|---------------|-------------|--------------|
+| 5  | 4 | [444, 624) | [268, 448) | OVERLAP (x [444, 608), y [352, 368)) | OVERLAP (x [444, 624), y [416, 432)) | OVERLAP (x [444, 624) ∩ [16, ~640), y [432, 448)) |
+| 5  | 3 | [489, 624) | [313, 448) | OVERLAP (x [489, 608), y [352, 368)) | OVERLAP (x [489, 624), y [416, 432)) | OVERLAP (x [489, 624), y [432, 448)) |
+| 6  | 4 | [428, 624) | [252, 448) | OVERLAP (x [428, 608), y [352, 368)) | OVERLAP                                    | OVERLAP                                    |
+| 6  | 3 | [477, 624) | [301, 448) | OVERLAP (x [477, 608), y [352, 368)) | OVERLAP                                    | OVERLAP                                    |
+| 7  | 4 | [412, 624) | [236, 448) | OVERLAP                                    | OVERLAP                                    | OVERLAP                                    |
+| 7  | 3 | [465, 624) | [289, 448) | OVERLAP                                    | OVERLAP                                    | OVERLAP                                    |
+| 8  | 4 | [396, 624) | [220, 448) | OVERLAP                                    | OVERLAP                                    | OVERLAP                                    |
+| 8  | 3 | [453, 624) | [277, 448) | OVERLAP                                    | OVERLAP                                    | OVERLAP                                    |
+| 9  | 4 | [380, 624) | [204, 448) | OVERLAP                                    | OVERLAP                                    | OVERLAP                                    |
+| 9  | 3 | [441, 624) | [265, 448) | OVERLAP                                    | OVERLAP                                    | OVERLAP                                    |
+| 10 | 4 | [364, 624) | [188, 448) | OVERLAP                                    | OVERLAP                                    | OVERLAP                                    |
+| 10 | 3 | [429, 624) | [253, 448) | OVERLAP                                    | OVERLAP                                    | OVERLAP                                    |
+
+Every fit-eligible combination overlaps every bootloader
+content row at 640×480. The current production V5/L at
+4 px/module is no exception: it sits at x ∈ [444, 624),
+overlapping the right ~164 px of the prompt row and the
+last ~50 chars of the echo row. The renderer paints the QR
+*after* the bootloader's text, so the QR overpaints
+whatever was there — at 640×480, the right portion of the
+R/I/A prompt and the trailing characters of any long paste
+echo are visually obscured by the QR. **This is the
+established baseline.** Phase 1 shipped per-line and
+per-bootloader-state refresh against this geometry and the
+operator accepted the partial occlusion at 640×480 as the
+cost of right-anchored placement.
+
+The relevant criterion for step 2a is therefore not "does
+the QR overlap content?" (V5/L already does) but "does a
+larger QR overlap *more* content than the operator has
+already accepted?" Concretely:
+
+- **V5@4 (baseline)** obscures: right 164 px of prompt
+  row, last ~50 chars of full-buffer echo, right portion of
+  wrong-indicator. Y range starts at 268 (row 16) — well
+  below any of the 19 PRE-script lines.
+- **V6@4** drops the left edge to x = 428, obscures
+  another 16 px of prompt content (still within the 74-char
+  prompt). Y range starts at 252 (row ~15) — encroaches on
+  the last PRE-script lines (`SENSORIUM: nominal` etc.).
+- **V8@4** drops to x = 396, y = 220 (row ~13). Eats
+  another four PRE-script lines and obscures most of the
+  prompt's `(I)gnore, or (A)bort?` tail.
+- **V10@4** drops to x = 364, y = 188 (row ~11). Obscures
+  half the PRE-script boot transcript and most of the
+  prompt — the situation paragraph's "doesn't fit"
+  conclusion.
+- **3 px/module scales** all clear the PRE-script row
+  region (y ≥ 265 at V9, ≥ 253 at V10) but every one of
+  them still clips the prompt and echo rows because the
+  prompt occupies x ∈ [16, 608) — even the smallest
+  3 px/module QR (V5 at x = 489) intrudes 119 px into the
+  prompt content x-range.
+
+The 3 px/module column does not unlock anything qualitatively
+new: the QR shrinks back to roughly V5@4's footprint
+(V10@3 = 195 px ≈ V5@4 = 180 px), so we trade decode
+reliability headroom for capacity headroom that we could
+have gotten without changing the module scale.
+
+### Decoded byte-capacity budget
+
+Subtract from the raw capacity:
+- Header + trailer: **14 bytes** (10 header + 4 trailer).
+- Eight rolling-hash records × 6 bytes: **48 bytes**
+  (phase-2 default per the *Open questions* table).
+- Total fixed overhead: **62 bytes**.
+
+Average raw-event record size is ~14 bytes (per
+`src/digest.rs::size_of_record`: Keypress=14, LineRendered=12,
+SceneTransition=12, BootloaderDecision=15, PasteReceived=13,
+BootloaderTimeout=10, ModeSwitch=18, ModeCycle=15 — mean
+13.6). The budget then divides cleanly:
+
+| V    | Raw bytes | Post-overhead | Raw events (~14 B each) |
+|------|-----------|---------------|--------------------------|
+| V5   | 106       | 44            | ~3                       |
+| V6   | 134       | 72            | ~5                       |
+| V7   | 154       | 92            | ~6                       |
+| V8   | 192       | 130           | ~9                       |
+| V9   | 230       | 168           | ~12                      |
+| V10  | 271       | 209           | ~14                      |
+
+V5/L's 44-byte raw-event budget after eight hash records
+is tight: a single bootloader paste flow generates 23
+Keypress events × 14 B = 322 B of demand against 44 B of
+supply, so ~3 of the last 23 echoes survive in each frame.
+The rolling hashes are the safety net that makes this
+acceptable (they record *every* echo, just not the raw
+content).
+
+### Recommendation
+
+**Stay at V5/L at 4 px/module. Truncate raw events to the
+44-byte post-overhead budget. Treat rolling hashes as the
+primary diagnostic; raw events are secondary context.**
+
+Reasoning:
+
+1. **No fit-eligible bump qualitatively improves the
+   overlap story at 640×480.** Every QR larger than V5@4
+   obscures more content than the operator has already
+   accepted; every 3 px/module choice still clips the
+   prompt and echo rows. The smallest "intermediate" bump
+   (V6@4) eats into the PRE-script transcript without
+   buying a useful raw-event budget increase (~5 events
+   vs ~3).
+2. **The raw-event budget loss is what the rolling hashes
+   exist to compensate for.** The parent plan's *Operator
+   framing* is explicit: the rolling hashes are the
+   primary "did the server see this" channel; raw events
+   are the localisation aid. A 44-byte raw window covering
+   the most recent ~3 events is sufficient for that
+   localisation role given that the hashes flag *that*
+   divergence happened.
+3. **The decode-reliability floor and the content-layout
+   constraint together kill the V10 direction.** The only
+   way V10 fits without overlapping more than baseline is
+   2 px/module, which `zbarimg` does not reliably decode.
+   Re-laying out the bootloader scene at 640×480 to make
+   room for V10 (shorter prompt, narrower echo, moved
+   countdown) is a much larger scope-creep change than this
+   phase warrants and the rolling-hash payload structure
+   does the diagnostic job without it.
+4. **Mode-aware QR version is rejected up-front by this
+   plan's *Open questions* entry** — payload size varying
+   by mode forces downstream decoders to handle two
+   budgets. Not on the table.
+
+Rejected alternatives (kept here for future re-evaluation):
+
+- **V10/L + 640×480 content-layout change.** Would require
+  splitting the 74-char prompt across two lines, narrowing
+  the echo's column count, and moving the countdown out of
+  the prompt row's Y range. Achievable but invasive; the
+  rolling-hash mechanism makes the larger raw-event window
+  unnecessary.
+- **V8/L or V9/L at 4 px/module.** Buys 9–12 raw events
+  vs V5's ~3, but eats four to eight PRE-script transcript
+  rows (which carry the per-line refresh diagnostic value
+  phase 1 just paid for). Net diagnostic value is negative.
+- **V10/L at 3 px/module.** 195 px region is only 15 px
+  larger than V5@4; the raw-event budget triples (~3 → ~14
+  events) but the smaller modules reduce decode safety
+  margin against capture noise. Worth revisiting if rolling
+  hashes prove insufficient and a content-layout change is
+  on the table anyway.
+
+Consequence for the rest of phase 2: step 2c reduces
+`RECORD_BUDGET` by 48 bytes (8 channels × 6 B) and trusts
+the existing newest-first / oldest-first eviction in
+`encode` to handle truncation. Step 2d's "if V5/L stays"
+branch is the one we are taking — no `DIGEST_QR_VERSION`,
+`DIGEST_PAYLOAD_CAPACITY`, or geometry-assert changes are
+required.
+
 ## Closeout
 
 (Populated by step 2e. Should include: commit range, capacity
 decision and final reasoning, any deviations from the plan,
-links to follow-up work if applicable.)
+links to follow-up work if applicable.
+
+Cross-plan note for the phase 3 docs sweep: the parent
+plan's *TLV capacity strategy* and *Why QR and not a denser
+code* sections quote V10/L = 213 bytes and V20/L = 666
+bytes. Table 7 gives V10/L = 271 bytes and V20/L = 858
+bytes. Fix in phase 3.)
 
 ## Back brief
 

@@ -708,41 +708,33 @@ impl Scene {
             }
         }
 
-        // Restore the digest QR after a framebuffer wipe. Carve-out
-        // matches refresh_digest's own assertion: skip while the
-        // bootloader owns the screen, since it owns its own rows.
-        if !matches!(self.repaint_state, RepaintState::BootingBootloader { .. }) {
-            self.refresh_digest(renderer);
-        }
+        // Restore the digest QR after a framebuffer wipe.
+        self.refresh_digest(renderer);
     }
 
     /// Compute and render the on-screen digest reflecting the
     /// current ring-buffer state. Called at scene-phase boundaries
-    /// from the outer scene loop (`Scene::run`).
+    /// from the outer scene loop (`Scene::run`), after each painted
+    /// line in the boot transcript, on cursor blink transitions, and
+    /// at explicit refresh points inside `src/bootloader.rs`.
     ///
-    /// **Carve-out:** must not be called from inside `bootloader::run`
-    /// or its sub-state-machines — the bootloader scene owns its own
-    /// framebuffer-paint pacing, and a digest refresh mid-paste-prompt
-    /// could mask paste-correctness bugs. The `assert!` below crashes
-    /// loud on accidental re-entry; one `match` per refresh is
-    /// negligible cost against the encode + draw work.
+    /// The bootloader sub-state-machine places its own refresh calls
+    /// after each visible state change; `Scene::repaint` during the
+    /// bootloader scene falls back to PRE-only reconstruction (the
+    /// bootloader's row content is not reconstructable from
+    /// `RepaintState`) and `refresh_digest` participates normally.
     ///
     /// Hash path A: reads the framebuffer back via
     /// `BltOp::VideoToBltBuffer` and CRC32Cs the bytes outside the
     /// right-anchored digest region. Picked over path B (per-paint
     /// incremental hash) by 2c-measure: path A concentrates ~21.5M
-    /// cycles per call (~7 ms at 3 GHz) into the three scene-phase
-    /// boundaries instead of leaking hash overhead into every paint
-    /// site forever, and it implicitly exercises the SPICE display's
-    /// read-back path which the project otherwise never touches. See
+    /// cycles per call (~7 ms at 3 GHz) into the named refresh sites
+    /// instead of leaking hash overhead into every paint site forever,
+    /// and it implicitly exercises the SPICE display's read-back path
+    /// which the project otherwise never touches. See
     /// `PLAN-visual-digest-phase-02-payload.md` *Outcome* for the full
     /// A/B numbers and rationale.
     fn refresh_digest(&mut self, renderer: &mut Renderer) {
-        assert!(
-            !matches!(self.repaint_state, RepaintState::BootingBootloader { .. }),
-            "refresh_digest called during bootloader scene — carve-out violated",
-        );
-
         let tsc_start = read_tsc();
 
         self.digest_frame_counter = self.digest_frame_counter.wrapping_add(1);

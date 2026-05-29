@@ -561,6 +561,7 @@ impl Scene {
                     });
                     row += 1;
                     self.repaint_state = make_state(idx + 1);
+                    self.refresh_digest(renderer);
                     self.stall_with_keys(renderer, PACE_LINE_MS);
                 }
                 SceneStep::Line(text) => {
@@ -571,6 +572,7 @@ impl Scene {
                     });
                     row += 1;
                     self.repaint_state = make_state(idx + 1);
+                    self.refresh_digest(renderer);
                     self.stall_with_keys(renderer, PACE_LINE_MS);
                 }
                 SceneStep::Probe {
@@ -592,6 +594,7 @@ impl Scene {
                     });
                     row += 1;
                     self.repaint_state = make_state(idx + 1);
+                    self.refresh_digest(renderer);
                     self.stall_with_keys(renderer, PACE_LINE_MS);
                 }
             }

@@ -286,10 +286,137 @@ as *Complete* with consistent commit-range references.
 
 ## Closeout
 
-(Populated by step 3f. Should include: commit map of all
-phase-3 steps, decisions made during execution, any
-deviations from the plan, and a *Coordination notes*
-subsection populated by step 3e's ryll-decoder finding.)
+**Status: Complete.** Commit range `8de8b03` through this
+closeout. All six implementation steps landed; with this
+phase closed, the parent plan PLAN-continuous-digest is
+*Complete*.
+
+### Commit map
+
+| Step | Commit  | Title |
+|------|---------|-------|
+| 3a   | 8de8b03 | Rewrite visual-digest-format.md for schema v2. |
+| 3b   | 946e611 | Reframe digest in DESIGN.md as gRPC-substitute. |
+| 3c   | 64fe728 | Update ARCHITECTURE.md + AGENTS.md cadence. |
+| 3d   | 372906e | Fix parent-plan capacity-figure typos. |
+| 3e   | —       | Ryll-decoder verification (research only; finding in *Coordination notes* below). |
+| 3f   | (this)  | Phase + master-plan closeout. |
+
+### Coordination notes
+
+#### Ryll-decoder unknown-tag handling — finding from step 3e
+
+**Result: N/A (harmless).** Ryll has no QR decoder for the
+visual-digest payload yet. Step 3e (an Explore-agent
+investigation of `/srv/kasm_profiles/mikal/vscode/src/shakenfist/ryll`)
+found:
+
+- No `zbar`, `pyzbar`, `qrcode`, or `qrcodegen` dependencies
+  in `ryll/ryll/Cargo.toml`.
+- Zero grep matches for `SXDG`, `digest`, `qr`, or the
+  `0x11..=0x18` tag range anywhere in ryll's source tree.
+- No ryll plan document mentioning digest decoding or QR
+  scanning work.
+- The ryll web module contains no QR-related code either.
+
+Consequence: the schema v2 bump landed in phase 2c is
+entirely harmless for ryll today. There is no decoder that
+could fail on unknown tags in the new range, and there is
+no version-compatibility code to update.
+
+When ryll eventually implements a QR decoder for the visual
+digest (a future-work item for the ryll repo, not this one),
+the decoder should:
+
+1. Walk the TLV payload by `tag + length` pairs, advancing
+   `length + 2` bytes per record, rather than dispatching on
+   specific tag values up-front.
+2. Accept any `DIGEST_SCHEMA_VERSION` it knows about and
+   either gracefully degrade or fail-loud on versions it
+   doesn't.
+3. Skip unknown tags in the 0x10..=0x1F reserved range
+   without rejecting the surrounding payload — the digest
+   format is designed to add new tag types in this range
+   without forcing a schema bump (the schema bump in v2 was
+   signalling-only; future tag additions in the reserved
+   range will not bump again).
+
+The forward-pointing reference in `docs/visual-digest-format.md`
+(*Schema version compatibility* section) cites this
+*Coordination notes* subsection. That cross-reference is
+correct and will stay accurate once the closeout commit
+lands.
+
+### Decisions made during execution
+
+- **Spec rewrite scope (step 3a).** The brief allowed a
+  comprehensive rewrite vs incremental edits; the sub-agent
+  picked comprehensive (210 insertions / 93 deletions over a
+  297-line target). The result is structurally similar to
+  the v1 doc but every section now describes v2 reality. One
+  pre-existing v1 figure was also corrected during the
+  rewrite (the trailer cost was quoted as "~21 ms per
+  refresh" — that was the per-boot total across three calls;
+  the source comment gives "~7 ms per call" — the per-call
+  figure is what matters and what the doc now quotes).
+- **Smoke header comment policy (step 3a).** The
+  `scripts/digest-payload-smoke.sh` header comment still
+  describes the v1 format. Intentionally left stale — the
+  spec is the single source of truth; sweeping the smoke
+  header would duplicate the spec in a second location. The
+  smoke's code-level assertions already cover v2; only the
+  descriptive comment is out of sync.
+- **DESIGN.md preserves two-channel framing (step 3b).** The
+  two-channel framing is kept as historical context ("The
+  original design called for..."), with the new substitute-
+  for-gRPC framing introduced as a `### Visual digest:
+  substitute for the never-built serial channel` subsection.
+  The channel-mapping table elsewhere in DESIGN.md still
+  references the two-channel framing, so removing it would
+  have orphaned that table.
+
+### Deviations from the plan
+
+None substantive. Step 3a corrected one pre-existing
+incorrect figure during the rewrite (trailer cost was
+per-boot total, not per-call) — the brief did not call out
+this specific fix, but it's an unambiguous improvement and
+consistent with the brief's "every number cross-checked
+against source" instruction.
+
+### Follow-ups uncovered
+
+None requiring a new plan. The ryll-decoder coordination
+note above is the only future-coordination item, and it is
+a future-work item for the ryll repo itself rather than
+something this project needs to act on.
+
+### Master-plan closeout note
+
+With phase 3 closed, PLAN-continuous-digest is *Complete*.
+The three-phase arc:
+
+- **Phase 1** (commits 8814fab through 95ffdd6) added
+  per-line / per-blink / per-bootloader-state-change refresh
+  cadence. Bail-out criterion PASS at 3.1% transcript
+  overhead.
+- **Phase 2** (commits 7df2a7b through bb0f83e) added
+  per-channel rolling CRC32C hashes covering all eight
+  `Event` variants; the parent plan's V10/L default was
+  overturned to V5/L + raw-event truncation; CRC chaining
+  math empirically verified.
+- **Phase 3** (commits 8de8b03 through this closeout) swept
+  the docs: schema-v2 spec, DESIGN reframing, ARCHITECTURE +
+  AGENTS cadence updates, parent-plan capacity-figure fixes,
+  ryll-decoder coordination check.
+
+The QR digest is now a continuously-valid client-comparison
+oracle carrying display + 8-channel event state, refreshed
+at every visible state change across the scene. The
+substitute-for-second-serial-gRPC framing is the
+architectural intent; future channels (USB redir, pointer,
+audio, smartcard) slot into the reserved 0x10..=0x1F TLV tag
+range as the firmware grows support for them.
 
 ## Back brief
 

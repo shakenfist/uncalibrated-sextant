@@ -11,32 +11,83 @@ gameplay rather than feeling synthetic.
 
 ## Two-channel test architecture
 
-The guest emits the same stream of test events through two
-independent channels, both fed from a single in-memory ring buffer:
+The original design called for the guest to emit the same stream of
+test events through two independent channels, both fed from a single
+in-memory ring buffer:
 
 - **Serial (gRPC-over-serial, bidirectional)** — primary headless
   assertion channel. Ryll drives the guest ("render this payload as a
   QR", "report current framebuffer hash", "advance to next scene")
   and consumes structured events ("key_down scancode=0x1e at t=…").
   Transport pattern lifted from [instar](../instar/).
-- **Visual (on-screen digest)** — a QR code rendered into the
-  bottom-right of the framebuffer at every scene-phase boundary and
-  on every mode switch, encoding the last N events from the same
-  ring buffer plus a CRC32C of the rest of the framebuffer.
-  A SPICE-client-side harness screenshots the client's view and
-  decodes this. Validates the *display path* (does the client see
-  what the guest drew?), independent of serial. Wire format:
-  [docs/visual-digest-format.md](docs/visual-digest-format.md).
+- **Visual (on-screen digest)** — originally described as the
+  display-correctness complement to the serial channel. The operator
+  has since clarified a sharper role (see below).
 
-Because both channels read from the same ring buffer, they should
-agree by construction. Divergence between "what serial says arrived"
-and "what the client screenshot decoded" localises the bug to display
-vs input path.
+The gRPC-over-serial transport was never built. A second serial port
+(added to Shaken Fist if needed; Nova supports this via
+`hw:serial_port_count`) would keep test events out of the firmware
+console log, but UEFI second-serial portability is hard across the
+clouds this project targets (OpenStack, Shaken Fist, Proxmox, oVirt):
+support is hypervisor-dependent and not uniformly available.
 
-A second serial port (added to Shaken Fist if needed; Nova supports
-this via `hw:serial_port_count`) keeps test events out of the firmware
-console log. Cleaner framing on its own channel, no risk of collision
-with mid-event firmware panics.
+### Visual digest: substitute for the never-built serial channel
+
+The on-screen digest is the **substitute for the never-built
+second-serial gRPC channel** — a continuous multi-channel state
+oracle for client-side wedge detection, not merely the visual half
+of a two-channel test architecture.
+
+**Why side-channel-through-display.** The display channel is always
+available because the firmware has to render anyway. Riding the
+cross-channel state-sync side-band through the framebuffer is more
+portable than a second serial port and requires no hypervisor
+configuration.
+
+**Operating model.** The firmware renders a QR code into the
+bottom-right corner of the framebuffer, updating at every visible
+state change. The server publishes expected state in the QR; an
+external client (ryll) hashes its own render of the same display and
+compares. A mismatch halts the CI run and drops the operator into
+an interactive debug session. "Snapshot at any time is meaningful"
+is the design goal. Wire format:
+[docs/visual-digest-format.md](docs/visual-digest-format.md).
+
+**What the digest currently carries** (post phases 1 and 2 of
+PLAN-continuous-digest):
+
+- Display-channel state via the framebuffer-CRC32C trailer (path A):
+  a CRC32C of every non-digest framebuffer pixel, computed by
+  reading the framebuffer back via `BltOp::VideoToBltBuffer`.
+  This is what SPICE transmits to the client — the right reference
+  for "did the client render what the server emitted."
+- Eight per-channel rolling CRC32C hashes, one per `Event` variant
+  — Keypress, LineRendered, SceneTransition, BootloaderDecision,
+  PasteReceived, BootloaderTimeout, ModeSwitch, ModeCycle. Each is
+  the CRC32C of every TLV-encoded event of that variant since boot.
+  A hash that diverges from the client's replay marks the first
+  event the client missed and stays diverged — the right semantic
+  for "flag that something went wrong."
+- The most-recent few raw event records (≤44 bytes' worth, ~3 records
+  typically) for human and tool debugging context.
+
+**Refresh cadence.** The QR updates at every visible state change:
+per painted line in the boot transcript, on every cursor blink
+transition in AWAITING and PARKED, and at every state transition
+inside the locked-bootloader sub-state-machine. This gives bisection
+resolution to a single line or event rather than a whole scene phase.
+
+**Future channels.** USB redir, pointer events, audio frames, and
+smartcard activity slot into the reserved 0x10..=0x1F tag range as
+the firmware grows support for those SPICE channels. The current
+eight channels occupy 0x11..=0x18 (see
+[docs/visual-digest-format.md](docs/visual-digest-format.md) for
+the full tag table).
+
+When the gRPC-over-serial transport is eventually built, the
+per-channel rolling hashes give it a cheap cross-check against the
+visual oracle: hash agreement means both channels observed the same
+event stream; divergence localises the fault to display vs serial.
 
 ### Connection handshake (avoiding the UEFI-fast / client-slow race)
 
@@ -45,7 +96,7 @@ finish the opening boot-sequence scene before a human has pointed
 virt-viewer at the VM, or even before a CI-orchestrated SPICE client
 has finished its TLS handshake. Starting the sequence too early
 means the client misses it; screenshots come back blank; the
-visually-asserted half of the test becomes unreliable.
+visual digest oracle becomes unreliable.
 
 We solve this with an explicit handshake, holding at a diegetic
 "AWAITING OPERATOR" screen (blinking cursor, CRT wobble slowly

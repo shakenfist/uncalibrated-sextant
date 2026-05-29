@@ -832,9 +832,18 @@ impl Scene {
         cursor_row: usize,
         on_exit: F,
     ) {
+        // Initialised to `None` so the first iteration always
+        // refreshes: the very first `Some([0xFF; 16])` (cursor On)
+        // differs from `None` and re-encodes the QR against the
+        // freshly-painted cursor.
+        let mut last_glyph: Option<[u8; 16]> = None;
         loop {
             let glyph = self.cursor.tick(POLL_MS);
             Self::draw_or_clear_cursor(renderer, glyph, cursor_col, cursor_row);
+            if glyph != last_glyph {
+                self.refresh_digest(renderer);
+                last_glyph = glyph;
+            }
             self.tick_toast(renderer, POLL_MS);
             stall(&mut self.clock_ms, POLL_MS);
 
@@ -1036,6 +1045,8 @@ impl Scene {
             post_played,
             system_online_row: text_row,
         };
+
+        self.refresh_digest(renderer);
 
         // Reuse the existing cursor state to preserve blink/glitch
         // counter continuity from the AWAITING screen.

@@ -17,13 +17,15 @@
 
 // UEFI-dependent modules are excluded from the test profile so host
 // `cargo test` (on `x86_64-unknown-linux-gnu`) does not try to compile
-// `uefi::*` against a non-UEFI target. Pure modules — `digest`,
-// `event` — stay available for `#[cfg(test)]` unit tests.
+// `uefi::*` against a non-UEFI target. The `event` module (pure,
+// re-exports the wire-format types from `shakenfist-visual-digest`)
+// stays available for `#[cfg(test)]` unit tests; the TLV encoder
+// itself moved to that shared crate in step 1h, so Sextant no longer
+// hosts the host-side encoder tests.
 #[cfg(not(test))]
 mod bootloader;
 #[cfg(not(test))]
 mod cursor;
-mod digest;
 mod event;
 #[cfg(not(test))]
 mod logo;

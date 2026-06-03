@@ -10,6 +10,7 @@ publish = false
 uefi = { version = "=0.37.0", features = ["panic_handler", "alloc", "global_allocator"] }
 qrcodegen-no-heap = "1.8.1"
 crc = { version = "3", default-features = false }
+shakenfist-visual-digest = { git = "https://github.com/shakenfist/visual-digest-rust", rev = "dd9a9348f6a9cb286988b5c8498371399471d0cd", default-features = false }
 
 [profile.release]
 panic = "abort"

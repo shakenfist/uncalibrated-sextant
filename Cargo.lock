@@ -86,6 +86,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "shakenfist-visual-digest"
+version = "0.0.1"
+source = "git+https://github.com/shakenfist/visual-digest-rust?rev=dd9a9348f6a9cb286988b5c8498371399471d0cd#dd9a9348f6a9cb286988b5c8498371399471d0cd"
+dependencies = [
+ "crc",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -154,6 +162,7 @@ version = "0.0.1"
 dependencies = [
  "crc",
  "qrcodegen-no-heap",
+ "shakenfist-visual-digest",
  "uefi",
 ]
 

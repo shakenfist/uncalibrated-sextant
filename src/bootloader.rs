@@ -34,7 +34,8 @@
 // `draw_glyph` (or `draw_text_at`, which calls `draw_glyph` per char)
 // call. No multi-glyph blit shortcuts.
 
-use crate::digest::ChannelHashes;
+use shakenfist_visual_digest::ChannelHashes;
+
 use crate::event::{BootloaderChoice, Event, RingBuffer};
 use crate::renderer::Renderer;
 use crate::scene::{poll_key, stall, DigestRefresher, PACE_LINE_MS, POLL_MS};

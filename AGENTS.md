@@ -78,9 +78,13 @@ invokes directly.
 7. `src/cursor.rs` — `CursorState`: 1 Hz blink, LFSR-driven glitch
    substitution selecting from four broken-glyph variants
 8. `src/event.rs` — `RingBuffer<256>` with `Event::Keypress`,
-   `Event::LineRendered`, `Event::SceneTransition`, and the new
+   `Event::LineRendered`, `Event::SceneTransition`, and the
    `BootloaderDecision` / `PasteReceived` / `BootloaderTimeout`
-   variants; chronological `iter()` feeds the serial drain
+   variants; chronological `iter()` feeds the serial drain. The
+   `Event`/`Phase`/`BootloaderChoice` wire-format types are
+   re-exported from the shared `shakenfist-visual-digest` crate
+   (one source of truth for encoder + future Ryll decoder);
+   `RingBuffer<N>` stays Sextant-local
 9. `src/serial.rs` — `write_startup_banner` (for release-verify)
    and `drain` (end-of-scene plain-text dump of the ring buffer);
    both share a `with_serial` helper that briefly opens the Serial
@@ -96,8 +100,33 @@ invokes directly.
 
 ## Most recently landed
 
+**Visual-digest encoder moved to a shared crate (PLAN-test-harness
+phase 1, step 1h).** The TLV encoder and the `Event` / `Phase` /
+`BootloaderChoice` / `ChannelHashes` types are now sourced from
+[`shakenfist-visual-digest`](https://github.com/shakenfist/visual-digest-rust)
+(pinned to commit `dd9a9348`, `default-features = false` for
+`no_std`). `src/digest.rs` was deleted; `src/event.rs` now
+`pub use`-re-exports the wire-format types so existing
+`crate::event::*` imports stay unchanged. `RingBuffer<256>` stays in
+`src/event.rs`. The encoder's new signature takes `&[&Event]`
+(caller-materialised) instead of a `&RingBuffer<256>`; the
+`refresh_digest` call site collects `ring.iter()` into a short-lived
+`Vec<&Event>`. The QEMU `make digest-payload-smoke` is the load-
+bearing oracle for byte-equivalence — post-migration runs are byte-
+identical to pre-migration baseline runs once timing aligns (same
+frame counter, same framebuffer CRC, same per-channel hashes). The
+13 host-side encoder unit tests (`event_tlv_bytes` regression net +
+CRC chaining) moved to the crate; Sextant's `cargo test` now runs 0
+tests (all that remained were the encoder tests). Production
+`./scripts/check-rust.sh check` and `pre-commit run --all-files` are
+clean. Same wire-format spec at `docs/visual-digest-format.md` in
+the new crate; Sextant's `docs/visual-digest-format.md` is a one-
+line pointer to it (landed in step 1b).
+
 **Multi-channel rolling hashes (PLAN-continuous-digest phase 2, step
-2c).** `src/digest.rs` schema version bumped to 2. Eight TAG_HASH_*
+2c).** `shakenfist-visual-digest` schema version bumped to 2 (this
+landed in Sextant's `src/digest.rs` originally, then moved to the
+crate in step 1h above). Eight TAG_HASH_*
 constants (0x11..=0x18) added, each mirroring a raw-event tag in the
 reserved range. `RECORD_HASH_SIZE = 6` and `NUM_HASH_CHANNELS = 8`
 constants anchor the layout math. `encode` now accepts `&ChannelHashes`
@@ -154,9 +183,10 @@ refreshed at every visible state change (see the phase-1 cadence entry
 above for the full enumeration). It encodes a TLV payload of the
 most-recent events from the same ring buffer that feeds
 `serial::drain`, plus a CRC32C of every framebuffer pixel outside the
-digest region. The wire format
-(`docs/visual-digest-format.md`) is single-sourced; `src/digest.rs`
-encodes, `src/renderer/mod.rs::Renderer::draw_digest` renders, and
+digest region. The wire format is single-sourced in the shared
+`shakenfist-visual-digest` crate (`docs/visual-digest-format.md` in
+that repo); `shakenfist_visual_digest::encode` encodes,
+`src/renderer/mod.rs::Renderer::draw_digest` renders, and
 `scripts/digest-payload-smoke.sh` is the headless decoder reference.
 `make digest-payload-smoke` drives the full scripted scene to
 parking and asserts the decoded TLV. One bug fix during this work:

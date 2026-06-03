@@ -15,13 +15,15 @@
 extern crate alloc;
 
 use alloc::format;
+use alloc::vec::Vec;
 
 use core::arch::x86_64::_rdtsc;
 use core::time::Duration;
 
+use shakenfist_visual_digest::ChannelHashes;
+
 use crate::bootloader;
 use crate::cursor::CursorState;
-use crate::digest::ChannelHashes;
 use crate::event::{Event, Phase, RingBuffer};
 use crate::renderer::Renderer;
 use crate::serial;
@@ -150,9 +152,20 @@ impl DigestRefresher {
         // hash of everything-not-itself).
         let framebuffer_hash = renderer.crc32c_framebuffer_excluding_digest();
 
-        let mut buf = [0u8; crate::digest::DIGEST_PAYLOAD_CAPACITY];
-        match crate::digest::encode(
-            ring,
+        // Materialise the ring buffer as a slice of `&Event` for the
+        // shared-crate encoder. `RingBuffer::iter()` yields events in
+        // chronological (forward, oldest-first) order, which is the
+        // order the encoder expects — it walks the slice newest-to-
+        // oldest internally to select the most-recent run that fits.
+        // The `Vec` here is short-lived: a fresh allocation per
+        // refresh, dropped before the function returns. Worst case is
+        // 256 `&Event` (the ring's capacity), i.e. ~2 KB on a 64-bit
+        // pointer — comfortably within the UEFI heap that
+        // `uefi`'s `global_allocator` feature provides.
+        let events: Vec<&Event> = ring.iter().collect();
+        let mut buf = [0u8; shakenfist_visual_digest::DIGEST_PAYLOAD_CAPACITY];
+        match shakenfist_visual_digest::encode(
+            &events,
             self.frame_counter,
             framebuffer_hash,
             channel_hashes,

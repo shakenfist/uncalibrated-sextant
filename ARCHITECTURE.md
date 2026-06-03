@@ -71,6 +71,19 @@ occur, overwriting the oldest entry on overflow. `RingBuffer::iter`
 yields events in chronological order; `Phase::tag` returns stable
 lowercase phase names for serialised output.
 
+The wire-format types — `Event`, `Phase`, `BootloaderChoice` — and
+the TLV encoder itself live in the
+[`shakenfist-visual-digest`](https://github.com/shakenfist/visual-digest-rust)
+crate, shared with the future Ryll decoder so that producer and
+consumer cannot drift. `src/event.rs` re-exports the three event
+types via `pub use shakenfist_visual_digest::{...}`, so existing
+`crate::event::*` imports keep working unchanged. `RingBuffer<N>` is
+Sextant-local: the encoder takes a `&[&Event]` slice that the caller
+materialises from its container of choice. `Scene::refresh_digest`
+collects `ring.iter()` into a short-lived `Vec<&Event>` (chronological
+order; the encoder walks it newest-to-oldest internally) and hands
+that slice to `shakenfist_visual_digest::encode`.
+
 The logo pipeline: `scripts/vendor-logo.py` rasterises
 `shakenfist-logo-small.svg` via ImageMagick at 300 DPI, resizes to
 128x128, thresholds at 50% grey, then flips 2% of pixels using a PRNG
@@ -253,7 +266,8 @@ The visual half of the two-channel test architecture landed via
 PLAN-visual-digest (phases 1–3). `Renderer::draw_digest` renders a
 QR Version 5 / ECC Low code into the bottom-right of the
 framebuffer; `Scene::refresh_digest` rebuilds the payload from the
-ring buffer and re-encodes the QR. The refresh cadence —
+ring buffer (now via `shakenfist_visual_digest::encode`) and re-
+encodes the QR. The refresh cadence —
 substantially expanded in PLAN-continuous-digest phase 1 — is now:
 **per painted line** in the boot transcript (`play_script` calls
 `refresh_digest` after every `SceneStep` render, covering both
@@ -279,9 +293,10 @@ framebuffer pixels) is documented in
 `make digest-payload-smoke` is the headless decoder reference.
 
 **Multi-channel rolling hashes (PLAN-continuous-digest phase 2, steps
-2b–2c).** A `ChannelHashes` struct in `src/scene.rs` carries eight
-`u32` CRC32C accumulators — one per `Event` variant — updated on every
-`push_event` call in `Scene` and `BootloaderScene`. The CRC chaining
+2b–2c).** A `ChannelHashes` struct (from `shakenfist-visual-digest`,
+re-imported into `Scene`) carries eight `u32` CRC32C accumulators —
+one per `Event` variant — updated on every `push_event` call in
+`Scene` and `BootloaderScene`. The CRC chaining
 uses `Crc::digest_with_initial` with `resume_initial(f) = (f ^
 0xFFFF_FFFF).reverse_bits()` to correctly resume from a previously-
 finalized CRC_32_ISCSI value. Schema version 2 adds eight TAG_HASH_*

@@ -1,5 +1,5 @@
 //! TLV encoder for the visual on-screen digest. The wire format is
-//! documented in `docs/visual-digest-format.md`.
+//! documented at <https://github.com/shakenfist/visual-digest-rust/blob/main/docs/visual-digest-format.md>.
 //!
 //! The encoder is a pure function over a `RingBuffer<256>` snapshot,
 //! a monotonic frame counter, and an injected `framebuffer_hash`. It

@@ -559,7 +559,7 @@ impl Renderer {
     /// smeared across every paint site, which is the property that
     /// drove the A-over-B choice.
     pub(crate) fn crc32c_framebuffer_excluding_digest(&mut self) -> u32 {
-        use crate::digest::CRC32C;
+        use shakenfist_visual_digest::CRC32C;
 
         // Per-row stack buffer, sized for the largest supported
         // mode. `BltPixel` is `#[repr(C)]` with four u8 fields

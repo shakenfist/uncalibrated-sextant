@@ -57,4 +57,5 @@ vendor-probes:
 
 clean:
 	docker volume rm -f uncalibrated-sextant-target
+	docker volume rm -f uncalibrated-sextant-cargo
 	rm -rf target dist

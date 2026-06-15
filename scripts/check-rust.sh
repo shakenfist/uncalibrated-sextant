@@ -6,22 +6,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE_TAG="uncalibrated-sextant-build:1.88.0"
+# shellcheck source=scripts/rust-docker.sh
+source "$REPO_ROOT/scripts/rust-docker.sh"
 MODE="${1:-check}"
 
-# Build the image if it is missing; matches scripts/build.sh's pattern.
-if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
-    docker build -t "$IMAGE_TAG" "$REPO_ROOT"
-fi
-
-run_in_docker() {
-    docker run --rm \
-        -v "$REPO_ROOT":/work \
-        -v uncalibrated-sextant-target:/work/target \
-        -w /work \
-        "$IMAGE_TAG" \
-        "$@"
-}
+ensure_image
+rust_docker_prepare
 
 FAILED=0
 

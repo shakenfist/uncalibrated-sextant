@@ -5,17 +5,17 @@
 Before responding to questions or discussion points in this
 document, read the four sub-agent reports that produced the
 findings below. Those reports were generated as part of running
-`PUSH-TEMPLATE.md`'s wave 1 + wave 2 audit on the current state
+`PUSH-AUDIT.md`'s wave 1 + wave 2 audit on the current state
 of `main` (commit `8255685`, the closeout of the
 display-mode-keystrokes milestone) and are summarised in this
 plan rather than reproduced verbatim. The agents' reports
 themselves are not committed — they live in the management
 session that produced this plan, and the audit is reproducible
-by re-running `PUSH-TEMPLATE.md` against `main`.
+by re-running `PUSH-AUDIT.md` against `main`.
 
 Also read:
 
-- [`PUSH-TEMPLATE.md`](../../PUSH-TEMPLATE.md) — the audit
+- [`PUSH-AUDIT.md`](../../PUSH-AUDIT.md) — the audit
   template that this plan responds to. Wave 1 mechanical was
   run by hand because `tools/audit/wave1.sh` does not yet
   exist; that script is itself a possible future-work item but
@@ -74,7 +74,7 @@ The audit's headline observations:
   *Mission* below.
 
 The operator has additionally decided to move to PR-based
-workflows from this point on, with `PUSH-TEMPLATE.md` as a
+workflows from this point on, with `PUSH-AUDIT.md` as a
 PR-gating audit rather than personal discipline. That decision
 is independent of this plan but motivates it: the PR
 mechanism makes the audit's findings unavoidable on every
@@ -453,7 +453,7 @@ addressing in this plan:
   duplication grows past three sites.
 
 - **`tools/audit/wave1.sh` and
-  `tools/audit/wave2-mechanical.sh`.** `PUSH-TEMPLATE.md`
+  `tools/audit/wave2-mechanical.sh`.** `PUSH-AUDIT.md`
   references these scripts but they don't exist yet for
   this repo. Once we move to PRs (a separate operator
   decision, not part of this plan), creating the scripts

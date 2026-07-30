@@ -23,7 +23,7 @@ careful, and worth verifying the output byte-for-byte at the end.
 The repository currently contains design documents only (commits
 `649b8c8` and `862b638`): `README.md`, `DESIGN.md`,
 `ARCHITECTURE.md`, `AGENTS.md`, `PLAN-TEMPLATE.md`,
-`PUSH-TEMPLATE.md`, and `docs/plans/`. There is no Rust code, no
+`PUSH-AUDIT.md`, and `docs/plans/`. There is no Rust code, no
 Cargo manifest, no toolchain pin, and no `.gitignore`.
 
 **Relevant prior art, and what we cannot reuse from it.** Two

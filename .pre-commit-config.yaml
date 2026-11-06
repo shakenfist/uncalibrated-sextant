@@ -28,6 +28,17 @@ repos:
         types_or: [sh, bash, shell]
         args: ['-x']
 
+  # AGENTS.md and the plan template are read into every agent session,
+  # so a malformed heading, a smuggled unicode character or a secret
+  # pasted into them is a defect in the commit that introduces it
+  # rather than something for the weekly fleet audit to find. skillsaw
+  # lints them here, and .github/workflows/pre-commit.yml runs every
+  # hook in this file, so --no-verify does not get past it.
+  - repo: https://github.com/stbenjam/skillsaw
+    rev: v0.22.0
+    hooks:
+      - id: skillsaw
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
     hooks:

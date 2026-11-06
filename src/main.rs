@@ -20,8 +20,8 @@
 // `uefi::*` against a non-UEFI target. The `event` module (pure,
 // re-exports the wire-format types from `shakenfist-visual-digest`)
 // stays available for `#[cfg(test)]` unit tests; the TLV encoder
-// itself moved to that shared crate in step 1h, so Sextant no longer
-// hosts the host-side encoder tests.
+// lives in that shared crate, so Sextant hosts no host-side encoder
+// tests of its own and `cargo test` here runs none.
 #[cfg(not(test))]
 mod bootloader;
 #[cfg(not(test))]

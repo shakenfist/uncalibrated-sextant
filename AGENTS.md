@@ -57,6 +57,16 @@ invokes directly.
 - `./scripts/check-rust.sh fix` — auto-apply `cargo fmt` and
   `cargo clippy --fix`; safe to run on a dirty working tree.
 
+## Before pushing
+
+Run [PUSH-AUDIT.md](PUSH-AUDIT.md) over the accumulated diff against
+`origin/develop`, not over the last commit. It is a two-wave runbook:
+mechanical checks first, then four judgment sub-agents covering code
+quality, tests, documentation and security. Every master plan in
+`docs/plans/` ends with a phase that runs it, so the usual trigger is
+reaching that phase; run it before any other push that is more than a
+typo fix.
+
 ## Where to read first
 
 1. [README.md](README.md) — project framing

@@ -2,8 +2,14 @@ name: pre-commit
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
   pull_request:
+
+# The job reads the tree and reports through the check run; it writes
+# nothing back to the repository, so the default GITHUB_TOKEN scope is
+# narrowed to read-only here rather than per job.
+permissions:
+  contents: read
 
 jobs:
   pre-commit:

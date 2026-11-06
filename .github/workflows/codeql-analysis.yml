@@ -1,0 +1,79 @@
+name: CodeQL
+
+# Scope, stated plainly: this analyses the Python vendoring scripts and
+# the GitHub Actions workflows. It does NOT analyse the Rust firmware.
+#
+# That is deliberate rather than an oversight, and it follows instar,
+# which is the same shape of project. CodeQL's Rust support is preview
+# and needs a build it can observe, but this crate builds for
+# x86_64-unknown-uefi inside the project's Docker image
+# (scripts/rust-docker.sh), so autobuild on a runner with no toolchain
+# and no Docker daemon would either fail or silently analyse nothing.
+# An analysis that reports success while covering none of the firmware
+# is worse than no analysis, because it reads as coverage.
+#
+# The Rust code is covered instead by clippy with -D warnings and the
+# unwrap_used lint (scripts/check-rust.sh, run from pre-commit and in
+# CI), and by the PUSH-AUDIT.md runbook before each push. If CodeQL's
+# Rust support leaves preview, revisit this -- it would want an
+# explicit build command producing artifacts CodeQL can see, on a
+# runner carrying the toolchain, rather than autobuild.
+#
+# Template source: shakenfist/development/templates/codeql/, adapted as
+# above. The template's check_paths job is omitted: it exists to let
+# review-only pull requests skip the analysis, and this repository does
+# not deploy human review tracking (no .vscode/review-scope.toml), so
+# there is no review state for it to filter on.
+
+permissions: {}
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  schedule:
+    - cron: '0 17 * * 2'
+
+jobs:
+  analyze:
+    name: Analyze
+    # Fork pull requests get a read-only GITHUB_TOKEN regardless of the
+    # permissions block below, so the SARIF upload in analyze cannot
+    # succeed. Skip rather than fail: a red check on every fork pull
+    # request teaches contributors to ignore red checks.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, static]
+    timeout-minutes: 30
+    permissions:
+      # actions: read is required for workflow run telemetry.
+      actions: read
+      contents: read
+      security-events: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.language }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, actions]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+
+      # No autobuild step: neither Python nor Actions needs a build, and
+      # autobuild on a toolchain-less runner is exactly how this job
+      # would come to analyse nothing while reporting success.
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

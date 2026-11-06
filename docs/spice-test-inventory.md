@@ -65,7 +65,7 @@ or absent, leave it as a silent assertion.
 
 | Operation | Mode | Metaphorical role | Status |
 |-----------|------|-------------------|--------|
-| Mode set: 640x480, 800x600, 1024x768, etc. | set | Tuning the lens / adjusting perception | binary: [phase 4](plans/PLAN-first-playable-phase-04-renderer.md) |
+| Mode set: 640x480, 800x600, 1024x768, etc. | set | Tuning the lens / adjusting perception | binary: [renderer](plans/PLAN-first-playable-phase-04-renderer.md) |
 | Mode walk across all offered modes | both | The instrument testing what it can perceive | binary: [display-mode-keystrokes](plans/PLAN-display-mode-keystrokes.md) |
 | Bit-depth changes (8 / 16 / 32) | set | Colour vision dimming and brightening | — |
 | Image compression negotiated (LZ / GLZ / quic) | set | How frankly the instrument transmits what it sees | — |
@@ -82,19 +82,19 @@ or absent, leave it as a silent assertion.
 
 | Operation | Mode | Metaphorical role | Status |
 |-----------|------|-------------------|--------|
-| Cursor shape change (app-driven) | set | The operator's tool changing — their intent shifting | binary: [phase 5](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
+| Cursor shape change (app-driven) | set | The operator's tool changing — their intent shifting | binary: [boot sequence](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
 | Cursor hot-spot accuracy | play | How precisely the operator can indicate | — |
-| Cursor hide / show | set | The operator approaching / stepping back | binary: [phase 5](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
-| Custom application cursor (game-defined) | set | The operator pointing at something specific | binary: [phase 5](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
+| Cursor hide / show | set | The operator approaching / stepping back | binary: [boot sequence](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
+| Custom application cursor (game-defined) | set | The operator pointing at something specific | binary: [boot sequence](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
 | Cursor over hotspot zone (e.g. door, object) | play | Recognition — *I see what you're looking at* | — |
-| Animated cursor frames | set | Liveness / impatience | binary: [phase 5](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
+| Animated cursor frames | set | Liveness / impatience | binary: [boot sequence](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
 | Cursor at edge / off-screen behaviour | set | The operator's attention drifting away | — |
 
 ## Inputs — keyboard
 
 | Operation | Mode | Metaphorical role | Status |
 |-----------|------|-------------------|--------|
-| Single key press / release | play | Spoken commands; smallest possible utterance | binary: [phase 5](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
+| Single key press / release | play | Spoken commands; smallest possible utterance | binary: [boot sequence](plans/PLAN-first-playable-phase-05-boot-sequence.md) |
 | Modifier keys (Shift / Ctrl / Alt) | play | Tone, emphasis, register | — |
 | Function keys / arrows / page navigation | play | Ritual gestures — non-verbal commands | — |
 | Key repeat under hold | play | Insistence / impatience | — |

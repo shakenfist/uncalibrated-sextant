@@ -341,7 +341,27 @@ The remaining components still to be built:
 Style enforcement is declared in `.pre-commit-config.yaml` and
 executed by `scripts/check-rust.sh`, which reuses the Docker
 build image (`uncalibrated-sextant-build:1.88.0`) so Rust checks
-never require a host toolchain. The GitHub Actions workflow at
-`.github/workflows/pre-commit.yml` runs all non-Rust hooks (trailing
-whitespace, YAML, shellcheck, secret scanning) on every push and pull
-request; the `rust-check` hook is skipped there and enforced locally.
+never require a host toolchain.
+
+Six GitHub Actions workflows run on self-hosted runners:
+
+- `pre-commit.yml` is the CI gate. It runs every hook in
+  `.pre-commit-config.yaml` except `rust-check`, which needs the
+  Docker build image and so stays a local-only hook, and it carries
+  the `automated_reviewer` job that calls the shared
+  `pr-auto-review.yml` in
+  [shakenfist/actions](https://github.com/shakenfist/actions) once
+  the hooks pass.
+- `secret-scan.yml` runs gitleaks over the branch's whole history, on
+  pull requests and on pushes to `develop`, with no path filter.
+- `codeql-analysis.yml` scans the Python scripts and the workflow
+  definitions. It does not scan the firmware; the workflow explains
+  why at length.
+- `pr-re-review.yml` and `pr-retest.yml` are the comment-triggered
+  developer workflows ("please re-review", "please retest").
+  `pr-retest.yml` dispatches whatever the `RETEST_WORKFLOW`
+  repository variable names, which here is `pre-commit.yml`.
+- `renovate.yml` runs Renovate hourly against this repository,
+  configured by `renovate.json`.
+- `export-repo-config.yml` exports the repository's own GitHub
+  settings daily and opens a pull request when they have changed.

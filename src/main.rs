@@ -48,7 +48,7 @@ use uefi::prelude::*;
 #[cfg(not(test))]
 #[entry]
 fn main() -> Status {
-    uefi::helpers::init().unwrap();
+    uefi::helpers::init().expect("uefi::helpers::init failed");
 
     serial::write_startup_banner();
 

@@ -24,13 +24,13 @@ prompt in any specific language.
 ## Prompt
 
 Before working on this plan, re-read the *Voice* and *Boot
-sequence* sections of [DESIGN.md](../../DESIGN.md), the Phase
-4 / Phase 5 paragraphs of [ARCHITECTURE.md](../../ARCHITECTURE.md)
+sequence* sections of [DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/DESIGN.md), the Phase
+4 / Phase 5 paragraphs of [ARCHITECTURE.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/ARCHITECTURE.md)
 (in particular how `Renderer::draw_logo` tiles a packed
 1-bit-per-pixel bitmap as a grid of 8×16 cells), and the
 master plan [PLAN-first-playable.md](PLAN-first-playable.md)
 for tone and execution conventions. Skim
-[scripts/vendor-logo.py](../../scripts/vendor-logo.py) — the
+[scripts/vendor-logo.py](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/vendor-logo.py) — the
 language-probe vendor script is structurally a sibling.
 
 Cross-refs in-repo:

@@ -59,17 +59,17 @@ audit's deferred items):
 Re-read the master plan's *Phase 3 sketch* and *Future
 work*. Skim:
 
-- [`scripts/screenshot.sh`](../../scripts/screenshot.sh) —
+- [`scripts/screenshot.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/screenshot.sh) —
   the model for `scripts/screenshot-modes.sh`. Note the
   QMP send-key block driving AWAITING → Booting →
   Bootloader → Parked, and how it asserts drain events at
   the end.
-- [`scripts/verify-release.sh`](../../scripts/verify-release.sh) —
+- [`scripts/verify-release.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/verify-release.sh) —
   one-line addition to confirm `available GOP modes:`
   appears alongside the existing banner check.
-- [`Makefile`](../../Makefile) — for the new `screenshot-modes`
+- [`Makefile`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/Makefile) — for the new `screenshot-modes`
   target.
-- [`src/scene.rs`](../../src/scene.rs)'s `run_parked` and
+- [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs)'s `run_parked` and
   the `try_handle_mode_key` dispatcher so the test design
   matches actual behaviour: pressing a mode key from
   parked stays in parked (the dispatcher returns `true`

@@ -83,21 +83,23 @@ section of
 in full — it has the most detailed account of the
 investigation that surfaced this bug. Skim:
 
-- [`src/renderer/mod.rs`](../../src/renderer/mod.rs) —
+- [`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs) —
   particularly `Renderer::crc32c_framebuffer_excluding_digest`
   (added in commit `6221301`), which is the only caller of
   `BltOp::VideoToBltBuffer` in the project.
-- [`src/scene.rs`](../../src/scene.rs) —
+- [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) —
   `Scene::refresh_digest` (commit `8bef81d`) and its three
   call sites in `Scene::run`. The bug surfaces specifically
   on the second-and-onward `refresh_digest` call within
   the same boot.
-- [`scripts/digest-payload-smoke.sh`](../../scripts/digest-payload-smoke.sh)
+- [`scripts/digest-payload-smoke.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/digest-payload-smoke.sh)
   — the degraded smoke driver, whose long top-of-file
   comment documents the immediate downstream impact.
-- [`scripts/digest-smoke.sh`](../../scripts/digest-smoke.sh)
+- [`scripts/digest-smoke.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/2611f43/scripts/digest-smoke.sh)
   — the AWAITING-only smoke that *does* work (one read-back
-  per boot).
+  per boot). Removed in `07aadfa`, which collapsed the two smoke
+  targets into one, so the link is pinned to the commit that
+  added it.
 
 External references:
 

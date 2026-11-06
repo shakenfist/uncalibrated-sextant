@@ -15,21 +15,21 @@ by re-running `PUSH-AUDIT.md` against `main`.
 
 Also read:
 
-- [`PUSH-AUDIT.md`](../../PUSH-AUDIT.md) — the audit
+- [`PUSH-AUDIT.md`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/PUSH-AUDIT.md) — the audit
   template that this plan responds to. Wave 1 mechanical was
   run by hand because `tools/audit/wave1.sh` does not yet
   exist; that script is itself a possible future-work item but
   is out of scope for this plan.
-- [`AGENTS.md`](../../AGENTS.md) — *Most recently landed*
+- [`AGENTS.md`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/AGENTS.md) — *Most recently landed*
   section, *Design principles to respect*, and the project
   conventions that govern how cleanup work is committed.
-- [`ARCHITECTURE.md`](../../ARCHITECTURE.md) — particularly
+- [`ARCHITECTURE.md`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/ARCHITECTURE.md) — particularly
   the renderer description and the runtime mode-switching
   paragraph added in the previous milestone.
 - The two source files most affected by this plan:
-  [`src/scene.rs`](../../src/scene.rs) (878 lines) and
-  [`src/bootloader.rs`](../../src/bootloader.rs) (693 lines).
-  Plus [`src/renderer/mod.rs`](../../src/renderer/mod.rs)
+  [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) (878 lines) and
+  [`src/bootloader.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/bootloader.rs) (693 lines).
+  Plus [`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs)
   for the bounds-check fix.
 
 Where a question touches `uefi-rs` semantics (especially GOP's

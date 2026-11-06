@@ -269,37 +269,37 @@ particular the read-back-vs-incremental-hash measurement-
 driven design call, the bootloader carve-out, and the TLV
 shape default. Skim:
 
-- [`src/event.rs`](../../src/event.rs) — the eight current
+- [`src/event.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/event.rs) — the eight current
   `Event` variants and the `RingBuffer<256>` shape. The
   variant set is the type vocabulary the TLV format must
   cover; the `RingBuffer::iter()` yields chronological
   order without draining, which is exactly the read pattern
   the payload encoder needs.
-- [`src/serial.rs`](../../src/serial.rs) — the existing
+- [`src/serial.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/serial.rs) — the existing
   per-variant text formatter in `drain`. The TLV type tags
   should mirror the `type=…` discriminators there
   (`keypress`, `line`, `transition`, `bootloader_decision`,
   `paste`, `bootloader_timeout`, `mode_switch`,
   `mode_cycle`) so a human inspecting both representations
   sees the same vocabulary.
-- [`src/scene.rs`](../../src/scene.rs) — the `Scene` struct,
+- [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) — the `Scene` struct,
   `run_awaiting` / `run_booting` / `run_parked` flow, the
   `RepaintState` enum, `Scene::repaint`, and the call to
   `bootloader::run` (~line 419). Phase 2 wires a refresh
   call between scene-phase transitions; it does *not* touch
   any of the per-tick poll loops inside those runners or
   inside the bootloader.
-- [`src/bootloader.rs`](../../src/bootloader.rs) — the
+- [`src/bootloader.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/bootloader.rs) — the
   R/I/A prompt loop, paste-capture loop, and retry-animation
   pacing. These are the loops the digest must not refresh
   inside; understand the entry/exit shape so the carve-out
   assertion catches accidental re-entry.
-- [`src/renderer/mod.rs`](../../src/renderer/mod.rs) — the
+- [`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs) — the
   existing `BltOp::BufferToVideo` and `BltOp::VideoFill`
   patterns. Phase 2 adds the first `BltOp::VideoToBuffer`
   call site in the project (read-back from GOP).
-- [`scripts/spice-ryll.sh`](../../scripts/spice-ryll.sh) and
-  [`scripts/screenshot.sh`](../../scripts/screenshot.sh) —
+- [`scripts/spice-ryll.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/spice-ryll.sh) and
+  [`scripts/screenshot.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/screenshot.sh) —
   the spice-ryll script accepts a pre-built ESP path
   argument (default `dist/esp.img`), useful for isolating
   measurement runs from rebuild noise.

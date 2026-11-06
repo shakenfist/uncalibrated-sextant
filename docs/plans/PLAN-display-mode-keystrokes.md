@@ -3,17 +3,17 @@
 ## Prompt
 
 Before responding to questions or discussion points in this
-document, read [DESIGN.md](../../DESIGN.md) (especially the
+document, read [DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/DESIGN.md) (especially the
 *SPICE channel mapping* table, where the *Display channel* rows
 live), [docs/spice-test-inventory.md](../spice-test-inventory.md)
 (especially the *Display channel* section), the renderer at
-[`src/renderer/mod.rs`](../../src/renderer/mod.rs), the scene
+[`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs), the scene
 runners and `poll_key()` helper in
-[`src/scene.rs`](../../src/scene.rs), the existing keypress
+[`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs), the existing keypress
 handling pattern in
-[`src/bootloader.rs`](../../src/bootloader.rs) (around lines 282
+[`src/bootloader.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/bootloader.rs) (around lines 282
 and 523), and the ring-buffer event enum in
-[`src/event.rs`](../../src/event.rs). Ground every design choice
+[`src/event.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/event.rs). Ground every design choice
 in what the code does today; do not speculate when you can read
 instead.
 
@@ -68,13 +68,13 @@ Cross-repo references, in order of likely usefulness:
 
 The first-playable milestone (commits `862b638` → `a30bc38`)
 landed a UEFI binary that picks a single GOP mode at boot —
-[`src/renderer/mod.rs:52-72`](../../src/renderer/mod.rs)
+[`src/renderer/mod.rs:52-72`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs)
 enumerates `gop.modes()`, looks for `(1024, 768)`, calls
 `gop.set_mode(&mode)`, and caches `width` / `height` on the
 `Renderer`. Once set, the mode never changes for the life of
 the binary. The subsequent boot-sequence text *narrates* a
 mode probe (`640x480x8 ... OK` etc. at
-[`src/scene.rs:127-130`](../../src/scene.rs)) but does not
+[`src/scene.rs:127-130`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs)) but does not
 actually retune GOP — it is diegetic flavour.
 
 Triaging the ryll `display-mode-ui` fix exposed a testing

@@ -74,7 +74,7 @@ Before working on this phase, re-read the master plan's *Phase 1
 sketch* and the *Open questions* entries it points to (especially
 *SPICE client*, *`make qemu` (GTK) backwards compatibility*, and
 *Whether the existing screenshot flow needs to change*). Skim
-[scripts/qemu.sh](../../scripts/qemu.sh) — `scripts/spice.sh`
+[scripts/qemu.sh](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/qemu.sh) — `scripts/spice.sh`
 should mirror its structure (host-native bash, OVMF VARS
 freshened per run, serial log to `dist/serial.log`, repo-root
 relative paths) so the two scripts are comparable side-by-side.
@@ -94,17 +94,17 @@ unexpectedly demands one (it should not).
 
 Cross-refs in-repo:
 
-- [scripts/qemu.sh](../../scripts/qemu.sh) — the structural
+- [scripts/qemu.sh](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/qemu.sh) — the structural
   template. `scripts/spice.sh` should be diff-comparable.
-- [scripts/mkesp.sh](../../scripts/mkesp.sh) — ESP image
+- [scripts/mkesp.sh](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/mkesp.sh) — ESP image
   assembly; reused unchanged.
-- [scripts/screenshot.sh](../../scripts/screenshot.sh) — uses
+- [scripts/screenshot.sh](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/screenshot.sh) — uses
   `-display none` + a QMP socket. Same `-display none` discipline
   applies to `scripts/spice.sh` (the SPICE client *is* the
   display).
-- [Makefile](../../Makefile) — `make qemu` target as the model;
+- [Makefile](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/Makefile) — `make qemu` target as the model;
   the new `make spice` target sits beside it.
-- [src/scene.rs](../../src/scene.rs) — `run_awaiting` and
+- [src/scene.rs](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) — `run_awaiting` and
   `run_parked` both return on the *first* keypress. This is
   load-bearing context for what Phase 1 can and cannot verify
   about paste; see *Mission* below.

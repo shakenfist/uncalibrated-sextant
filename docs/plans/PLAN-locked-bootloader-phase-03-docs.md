@@ -22,7 +22,7 @@ Before working on this phase, re-read:
   Phase 2) and *Future work* (the wrong-paste-suffix overlap
   and the partial-paste indecision-hang, both deferred to
   this phase).
-- [src/bootloader.rs](../../src/bootloader.rs) — the file you
+- [src/bootloader.rs](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/bootloader.rs) — the file you
   will edit. Two narrow changes: the wrong-paste re-prompt
   layout and the silent-wait-timer condition.
 - [docs/spice-test-inventory.md](../spice-test-inventory.md)
@@ -334,7 +334,9 @@ Edit `docs/spice-test-inventory.md`. Find the row for *Text
 clipboard client → server*. Change its Status column from
 `—` to:
 
-    binary: [locked-bootloader](plans/PLAN-locked-bootloader.md)
+```
+binary: [locked-bootloader](plans/PLAN-locked-bootloader.md)
+```
 
 Match the format of existing `binary:` rows (some of the
 eight `binary:` rows in the file already have plan links;

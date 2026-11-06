@@ -3,7 +3,7 @@
 ## Prompt
 
 Before responding to questions or discussion points in this
-document, read [DESIGN.md](../../DESIGN.md) (especially the
+document, read [DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/DESIGN.md) (especially the
 *SPICE channel mapping* and *Voice: unreliable narration leaks*
 sections), [docs/spice-test-inventory.md](../spice-test-inventory.md)
 (especially the Clipboard section and the transport note
@@ -41,7 +41,7 @@ Cross-repo references, in order of likely usefulness:
   *Prerequisites* below.
 - `shakenfist/ryll` — eventual canonical SPICE client for this
   scene. Already speaks the host side of vdagent clipboard
-  ([ryll/src/channels/main_channel.rs:28-38](../../../ryll/ryll/src/channels/main_channel.rs))
+  ([ryll's main_channel.rs](https://github.com/shakenfist/ryll/blob/develop/shakenfist-spice-renderer/src/channels/main_channel.rs))
   but lacks a paste-as-keystrokes fallback for guests that do
   not advertise `CAP_CLIPBOARD_*`. Adding that fallback is
   this milestone's prerequisite (see *Prerequisites* below).

@@ -12,31 +12,31 @@ Before working on this phase, re-read:
   questions*, and *Phase 2 sketch* sections. Defaults from
   *Open questions* are in force unless this phase plan
   overrides them.
-- [src/scene.rs](../../src/scene.rs) — particularly
+- [src/scene.rs](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) — particularly
   `BOOT_SCRIPT`, `run_booting`, the `poll_key` helper, and
   the existing `stall` clock. The bootloader scene is a
   sub-state-machine that runs inside what is today the
   `Booting` phase, between `SENSORIUM: nominal` and
   `EMERGENCY SAFE BOOT COMPLETE`.
-- [src/event.rs](../../src/event.rs) — the `Event` enum and
+- [src/event.rs](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/event.rs) — the `Event` enum and
   `RingBuffer` capacity (256). New event variants land here.
-- [src/serial.rs](../../src/serial.rs) — the `drain` formatter
+- [src/serial.rs](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/serial.rs) — the `drain` formatter
   Ryll's parser will eventually consume. New event variants
   need stable lowercase tags.
-- [src/renderer/mod.rs](../../src/renderer/mod.rs) — what is
+- [src/renderer/mod.rs](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs) — what is
   available for in-place row updates today (`draw_glyph`,
   `clear_cell`, `draw_line`, `draw_telemetry_line`). Some
   helpers are missing for this phase and will be added.
-- [src/cursor.rs](../../src/cursor.rs) — blink and glitch
+- [src/cursor.rs](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/cursor.rs) — blink and glitch
   state. The bootloader scene does NOT carry the cursor through
   itself; the cursor only blinks during AWAITING and Parked.
-- [scripts/screenshot.sh](../../scripts/screenshot.sh) — QMP
+- [scripts/screenshot.sh](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/screenshot.sh) — QMP
   send-key is the only headless drive we have today. The
   screenshot path needs adapting (or deferring) once the
   bootloader scene becomes part of the boot sequence.
 - The cross-repo source for the paste behaviour we are
   receiving:
-  [`shakenfist/ryll/docs/plans/PLAN-paste-as-keystrokes.md`](../../../ryll/docs/plans/PLAN-paste-as-keystrokes.md)
+  [`shakenfist/ryll/docs/plans/PLAN-paste-as-keystrokes.md`](https://github.com/shakenfist/ryll/blob/develop/docs/plans/PLAN-paste-as-keystrokes.md)
   — particularly the resolved Open Questions for cap (4096),
   default delay (16 ms), unrepresentable-codepoint pre-validation
   (whole string aborts before any keystrokes are sent), and

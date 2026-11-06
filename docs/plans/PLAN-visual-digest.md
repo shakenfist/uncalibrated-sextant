@@ -8,10 +8,10 @@ Read the existing renderer (`src/renderer/mod.rs`), the scene
 state machine and its repaint logic (`src/scene.rs`,
 particularly `RepaintState` and `Scene::repaint`), the ring
 buffer (`src/event.rs`), and the existing serial drain
-(`src/serial.rs`). Read [DESIGN.md](../../DESIGN.md)'s
+(`src/serial.rs`). Read [DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/DESIGN.md)'s
 *Two-channel test architecture* and *Wire-level control*
 sections in full; this plan implements the *Visual (on-screen
-digest)* half. Read [ARCHITECTURE.md](../../ARCHITECTURE.md)'s
+digest)* half. Read [ARCHITECTURE.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/ARCHITECTURE.md)'s
 final paragraph that lists the on-screen digest as a deferred
 component.
 

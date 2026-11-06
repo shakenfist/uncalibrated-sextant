@@ -30,7 +30,7 @@ on.
 
 Cross-repo and in-repo references:
 
-- [DESIGN.md](../../DESIGN.md) — the design contract for the
+- [DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/DESIGN.md) — the design contract for the
   renderer. Principle 6 (per-glyph BitBlt beats monolithic
   framebuffer memcpy) directly constrains implementation.
 - `uefi` crate 0.37 docs —

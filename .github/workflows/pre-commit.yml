@@ -13,24 +13,37 @@ permissions:
 
 jobs:
   pre-commit:
-    runs-on: ubuntu-latest
+    name: Run the pre-commit hooks
+    runs-on: [self-hosted, static]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
+      # The runners enforce PEP 668 and refuse a bare pip install, so
+      # pre-commit goes in a venv. Under RUNNER_TEMP, with --clear,
+      # because a fixed path under /tmp is shared with every other job
+      # on a long-lived static runner.
       - name: Install pre-commit
-        run: pip install pre-commit
+        run: |
+          python3 -m venv --clear "${RUNNER_TEMP}/venv-pre-commit"
+          "${RUNNER_TEMP}/venv-pre-commit/bin/pip" install --quiet \
+              --disable-pip-version-check pre-commit
 
       # The rust-check hook runs rustfmt and clippy inside the
-      # project's Docker build image, which has a hard dependency on
-      # a local named volume for cargo's target directory. That does
-      # not reproduce cleanly on GitHub-hosted runners, so skip it
-      # here; Rust checks are still enforced locally via pre-commit
-      # on every commit. Once we have self-hosted shakenfist runners
-      # wired up (see Future work in PLAN-first-playable-phase-03-
-      # style.md), the rust-check hook can run in CI too.
+      # project's Docker build image, and that image needs a local
+      # named volume for cargo's target directory. Static runners carry
+      # no Docker daemon, so the hook is skipped here; rustfmt and
+      # clippy still gate every commit locally through pre-commit, and
+      # scripts/check-rust.sh runs them with -D warnings. Running them
+      # in CI as well wants a debian-13-docker runner and a warmed
+      # cargo cache, neither of which this job has.
       - name: Run pre-commit (rust hook skipped)
-        run: SKIP=rust-check pre-commit run --all-files
+        env:
+          SKIP: rust-check
+        run: >-
+          "${RUNNER_TEMP}/venv-pre-commit/bin/pre-commit" run --all-files
+          --show-diff-on-failure
+
+      - name: Clean up
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/venv-pre-commit"

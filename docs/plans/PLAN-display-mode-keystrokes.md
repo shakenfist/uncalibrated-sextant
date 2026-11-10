@@ -300,11 +300,18 @@ them drift.
 
 ## Execution
 
-| Phase | Plan | Status |
-|-------|------|--------|
-| 1. Renderer `set_mode` + redraw hook + ring-buffer events | [PLAN-display-mode-keystrokes-phase-01-renderer.md](PLAN-display-mode-keystrokes-phase-01-renderer.md) | Complete (commits f1acc97, 7c0f50b, 4dd4b03, 629bbad, plus this closeout) |
-| 2. Keystroke handlers in awaiting / booting / parked + cycle + on-screen toast | [PLAN-display-mode-keystrokes-phase-02-keystrokes.md](PLAN-display-mode-keystrokes-phase-02-keystrokes.md) | Complete (commits bf2c11f, df35129, d6af190, 77480cf, plus this closeout) |
-| 3. Iteration against ryll `display-mode-ui`, documentation, inventory closeout | [PLAN-display-mode-keystrokes-phase-03-docs.md](PLAN-display-mode-keystrokes-phase-03-docs.md) | Complete (commits 1c06122, d29187d, plus this closeout) |
+| Phase | Plan | Status | Merged |
+|-------|------|--------|--------|
+| 1. Renderer `set_mode` + redraw hook + ring-buffer events | [PLAN-display-mode-keystrokes-phase-01-renderer.md](PLAN-display-mode-keystrokes-phase-01-renderer.md) | Complete | f1acc97, 7c0f50b, 4dd4b03, 629bbad, a84df16 |
+| 2. Keystroke handlers in awaiting / booting / parked + cycle + on-screen toast | [PLAN-display-mode-keystrokes-phase-02-keystrokes.md](PLAN-display-mode-keystrokes-phase-02-keystrokes.md) | Complete | bf2c11f, df35129, d6af190, 77480cf, 1b1b446 |
+| 3. Iteration against ryll `display-mode-ui`, documentation, inventory closeout | [PLAN-display-mode-keystrokes-phase-03-docs.md](PLAN-display-mode-keystrokes-phase-03-docs.md) | Complete | 1c06122, d29187d, 8255685 |
+
+These phases landed directly on the default branch, before this
+repository used pull requests, so `Merged` lists each phase's
+commits or its `first through last` range. The column was
+reconstructed on 2026-11-11 from the commit lists the `Status`
+cells used to carry, with each "this closeout" resolved to the
+commit that wrote it.
 
 ### Phase 1 sketch — Renderer `set_mode`, redraw hook, ring-buffer events
 

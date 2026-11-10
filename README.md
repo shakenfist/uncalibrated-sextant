@@ -13,7 +13,7 @@ have to verify before you can trust them.
 
 ## What it looks like
 
-![Parking-screen capture from the first-playable build](https://raw.githubusercontent.com/shakenfist/uncalibrated-sextant/main/docs/images/boot-sequence.png)
+![Parking-screen capture from the first-playable build](https://raw.githubusercontent.com/shakenfist/uncalibrated-sextant/develop/docs/images/boot-sequence.png)
 
 The parking-screen frame after a keypress through the boot
 sequence, captured by `make screenshot` and regenerated on demand.
@@ -35,7 +35,7 @@ make clean           # remove dist/, target/, and the named Docker volume
 `make qemu` is the primary interactive target. It opens a GTK window;
 press any key to exit cleanly via ACPI shutdown. `make spice` is the
 required launch path for any scene that exercises a SPICE channel; see
-[docs/scenes.md](https://github.com/shakenfist/uncalibrated-sextant/blob/main/docs/scenes.md)
+[docs/scenes.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/docs/scenes.md)
 for the SPICE launch paths, the scene walkthroughs (including the
 locked-bootloader paste scene and the display-mode keystrokes), and
 host dependencies.
@@ -74,13 +74,13 @@ toolchain is required.
 
 ## Documentation
 
-- [docs/scenes.md](https://github.com/shakenfist/uncalibrated-sextant/blob/main/docs/scenes.md) - Running under SPICE and the scene walkthroughs
-- [docs/visual-digest-format.md](https://github.com/shakenfist/uncalibrated-sextant/blob/main/docs/visual-digest-format.md) - The QR visual-digest wire format
-- [docs/spice-test-inventory.md](https://github.com/shakenfist/uncalibrated-sextant/blob/main/docs/spice-test-inventory.md) - Which SPICE behaviours are exercised where
-- [docs/plans/](https://github.com/shakenfist/uncalibrated-sextant/blob/main/docs/plans/index.md) - The planning documents behind each milestone
-- [DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/main/DESIGN.md) - Channel mapping, test architecture, and aesthetic direction
-- [ARCHITECTURE.md](https://github.com/shakenfist/uncalibrated-sextant/blob/main/ARCHITECTURE.md) - Modules, scenes, serial message types, and build tooling
-- [AGENTS.md](https://github.com/shakenfist/uncalibrated-sextant/blob/main/AGENTS.md) - Guide for AI coding assistants
+- [docs/scenes.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/docs/scenes.md) - Running under SPICE and the scene walkthroughs
+- [docs/visual-digest-format.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/docs/visual-digest-format.md) - The QR visual-digest wire format
+- [docs/spice-test-inventory.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/docs/spice-test-inventory.md) - Which SPICE behaviours are exercised where
+- [docs/plans/](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/docs/plans/index.md) - The planning documents behind each milestone
+- [DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/DESIGN.md) - Channel mapping, test architecture, and aesthetic direction
+- [ARCHITECTURE.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/ARCHITECTURE.md) - Modules, scenes, serial message types, and build tooling
+- [AGENTS.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/AGENTS.md) - Guide for AI coding assistants
 
 ## Sibling projects
 

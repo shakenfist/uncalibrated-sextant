@@ -233,11 +233,24 @@ letting them drift.
 
 ## Execution
 
-| Phase | Plan | Status |
-|-------|------|--------|
-| 1. Region + QR encoder | [PLAN-visual-digest-phase-01-region.md](PLAN-visual-digest-phase-01-region.md) | Complete (commits 55844a5 through 2611f43) |
-| 2. Ring-buffer payload + framebuffer hash | [PLAN-visual-digest-phase-02-payload.md](PLAN-visual-digest-phase-02-payload.md) | Complete (commits 818d5f4 through d66c7f6). The "deferred scripted-scene smoke" hedge in the original closeout was downstream of the QR-capacity bug now fixed in d66c7f6; the smoke drives to parking. |
-| 3. Repaint integration, format spec, closeout | [PLAN-visual-digest-phase-03-closeout.md](PLAN-visual-digest-phase-03-closeout.md) | Complete (this closeout) |
+| Phase | Plan | Status | Merged |
+|-------|------|--------|--------|
+| 1. Region + QR encoder | [PLAN-visual-digest-phase-01-region.md](PLAN-visual-digest-phase-01-region.md) | Complete | 55844a5 through 2611f43 |
+| 2. Ring-buffer payload + framebuffer hash | [PLAN-visual-digest-phase-02-payload.md](PLAN-visual-digest-phase-02-payload.md) | Complete | 818d5f4 through d66c7f6 |
+| 3. Repaint integration, format spec, closeout | [PLAN-visual-digest-phase-03-closeout.md](PLAN-visual-digest-phase-03-closeout.md) | Complete | d13dd3e |
+
+These phases landed directly on the default branch, before this
+repository used pull requests, so `Merged` lists each phase's
+commits or its `first through last` range. The column was
+reconstructed on 2026-11-11 from the commit lists the `Status`
+cells used to carry, with each "this closeout" resolved to the
+commit that wrote it.
+
+Outcomes the `Status` cells used to carry:
+
+- Phase 2. The "deferred scripted-scene smoke" hedge in the
+  original closeout was downstream of the QR-capacity bug now
+  fixed in d66c7f6; the smoke drives to parking.
 
 ### Phase 1 sketch — region and QR encoder
 

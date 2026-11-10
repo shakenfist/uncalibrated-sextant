@@ -267,11 +267,23 @@ them drift.
 
 ## Execution
 
-| Phase | Plan | Status |
-|-------|------|--------|
-| 1. SPICE-client testing infrastructure | [PLAN-locked-bootloader-phase-01-spice-infra.md](PLAN-locked-bootloader-phase-01-spice-infra.md) | Complete (commits a7b261d + docs commit; remote-viewer paste-as-keystrokes finding documented in phase plan's *Outcome* section) |
-| 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Complete (commits 7537897, ec223c5, 93ce17e, 9b3335a, afda0b0) |
-| 3. Iteration, documentation, inventory closeout | [PLAN-locked-bootloader-phase-03-docs.md](PLAN-locked-bootloader-phase-03-docs.md) | Complete (commits 50e7f96, ffa84f4, 3a4f7aa, plus this closeout commit) |
+| Phase | Plan | Status | Merged |
+|-------|------|--------|--------|
+| 1. SPICE-client testing infrastructure | [PLAN-locked-bootloader-phase-01-spice-infra.md](PLAN-locked-bootloader-phase-01-spice-infra.md) | Complete | a7b261d, b8d9071 |
+| 2. Locked-bootloader scene (state machine, content, paste capture, validation, timeout, abort) | PLAN-locked-bootloader-phase-02-scene.md | Complete | 7537897, ec223c5, 93ce17e, 9b3335a, afda0b0 |
+| 3. Iteration, documentation, inventory closeout | [PLAN-locked-bootloader-phase-03-docs.md](PLAN-locked-bootloader-phase-03-docs.md) | Complete | 50e7f96, ffa84f4, 3a4f7aa, 1d3bccf |
+
+These phases landed directly on the default branch, before this
+repository used pull requests, so `Merged` lists each phase's
+commits or its `first through last` range. The column was
+reconstructed on 2026-11-11 from the commit lists the `Status`
+cells used to carry, with each "this closeout" resolved to the
+commit that wrote it.
+
+Outcomes the `Status` cells used to carry:
+
+- Phase 1. Remote-viewer paste-as-keystrokes finding documented in
+  phase plan's *Outcome* section.
 
 ### Phase 1 sketch — SPICE-client testing infrastructure
 

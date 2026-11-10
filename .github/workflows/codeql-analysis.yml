@@ -13,8 +13,12 @@ name: CodeQL
 # is worse than no analysis, because it reads as coverage.
 #
 # The Rust code is covered instead by clippy with -D warnings and the
-# unwrap_used lint (scripts/check-rust.sh, run from pre-commit and in
-# CI), and by the PUSH-AUDIT.md runbook before each push. If CodeQL's
+# unwrap_used lint (scripts/check-rust.sh), and by the PUSH-AUDIT.md
+# runbook before each push. Both are local: the rust-check pre-commit
+# hook needs the Docker build image, which the static runners cannot
+# provide, so pre-commit.yml skips it and nothing runs clippy in CI.
+# The firmware's only automated gate is a developer's own pre-commit
+# run, which --no-verify bypasses. If CodeQL's
 # Rust support leaves preview, revisit this -- it would want an
 # explicit build command producing artifacts CodeQL can see, on a
 # runner carrying the toolchain, rather than autobuild.

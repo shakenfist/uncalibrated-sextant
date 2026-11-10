@@ -1,5 +1,14 @@
 name: pre-commit
 
+# A lint gate, not a test run: it runs the pre-commit hooks other than
+# rust-check (see the step below for why that one is skipped). Nothing
+# in CI builds the firmware or boots it, so the QEMU oracles --
+# make digest-payload-smoke, scripts/test.sh,
+# scripts/screenshot-modes.sh, scripts/verify-release.sh -- run only on
+# a developer's machine. A retest dispatched through pr-retest.yml
+# re-runs this workflow, so a green retest means the hooks passed and
+# nothing more.
+
 on:
   push:
     branches: [develop]
@@ -23,7 +32,7 @@ jobs:
     runs-on: [self-hosted, static]
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The runners enforce PEP 668 and refuse a bare pip install, so
       # pre-commit goes in a venv. Under RUNNER_TEMP, with --clear,

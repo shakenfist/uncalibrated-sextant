@@ -343,7 +343,7 @@ executed by `scripts/check-rust.sh`, which reuses the Docker
 build image (`uncalibrated-sextant-build:1.88.0`) so Rust checks
 never require a host toolchain.
 
-Six GitHub Actions workflows run on self-hosted runners:
+The GitHub Actions workflows, all on self-hosted runners:
 
 - `pre-commit.yml` is the CI gate. It runs every hook in
   `.pre-commit-config.yaml` except `rust-check`, which needs the
@@ -351,7 +351,10 @@ Six GitHub Actions workflows run on self-hosted runners:
   the `automated_reviewer` job that calls the shared
   `pr-auto-review.yml` in
   [shakenfist/actions](https://github.com/shakenfist/actions) once
-  the hooks pass.
+  the hooks pass. It is a lint gate only: nothing in CI builds the
+  firmware or runs clippy, and the QEMU oracles
+  (`make digest-payload-smoke`, `scripts/test.sh`) run only on a
+  developer's machine.
 - `secret-scan.yml` runs gitleaks over the branch's whole history, on
   pull requests and on pushes to `develop`, with no path filter.
 - `codeql-analysis.yml` scans the Python scripts and the workflow

@@ -11,8 +11,11 @@ repo root. For pre-push audits of our own work see `PUSH-AUDIT.md`.
 A `Status` cell holds exactly one term from the shared vocabulary in
 `PLAN-TEMPLATE.md` -- `Proposed`, `Not started`, `In progress`,
 `Blocked`, `Complete`, `Abandoned` or `Superseded` -- and nothing
-else. Which commits landed a plan is recorded per phase in the plan's
-own Execution table, which is where a reader needs it.
+else. Which commits landed a plan is recorded in the plan itself,
+which is where a reader needs it: per phase in the `Merged` column
+of a master plan's Execution table, and in a standalone plan's own
+text (the post-landing note of the language probes plan, the status
+section of the headless read-back plan).
 
 ## Master plans
 

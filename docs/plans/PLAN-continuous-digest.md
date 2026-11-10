@@ -356,11 +356,32 @@ them drift.
 
 ## Execution
 
-| Phase | Plan | Status |
-|-------|------|--------|
-| 1. Refresh cadence + coverage (per-line, AWAITING, bootloader carve-out replacement) + path-A cost measurement | [PLAN-continuous-digest-phase-01-cadence.md](PLAN-continuous-digest-phase-01-cadence.md) | Complete (commits 8814fab through 06f6d1c). Bail-out criterion PASS at 3.1% overhead (74 refreshes / 434 ms over a ~14 s smoke transcript). |
-| 2. Multi-channel TLV + capacity decision (V5/L vs V10/L) | [PLAN-continuous-digest-phase-02-multi-channel.md](PLAN-continuous-digest-phase-02-multi-channel.md) | Complete (commits 7df2a7b through a3639a5). Capacity decision: stay V5/L (parent's V10/L default overturned — doesn't fit at 640×480 without overlapping bootloader content); 8 rolling-hash records consume 48 bytes leaving 44 bytes for raw events; CRC chaining math empirically verified. |
-| 3. Docs, decoder coordination, closeout | [PLAN-continuous-digest-phase-03-closeout.md](PLAN-continuous-digest-phase-03-closeout.md) | Complete (commits 8de8b03 through this closeout). Wire-format spec rewritten for schema v2; DESIGN.md reframed; ARCHITECTURE.md + AGENTS.md cadence updated; parent-plan capacity typos fixed; ryll's decoder verified as a future-work item (no current decoder, so v2 bump is harmless). |
+| Phase | Plan | Status | Merged |
+|-------|------|--------|--------|
+| 1. Refresh cadence + coverage (per-line, AWAITING, bootloader carve-out replacement) + path-A cost measurement | [PLAN-continuous-digest-phase-01-cadence.md](PLAN-continuous-digest-phase-01-cadence.md) | Complete | 8814fab through 06f6d1c |
+| 2. Multi-channel TLV + capacity decision (V5/L vs V10/L) | [PLAN-continuous-digest-phase-02-multi-channel.md](PLAN-continuous-digest-phase-02-multi-channel.md) | Complete | 7df2a7b through a3639a5 |
+| 3. Docs, decoder coordination, closeout | [PLAN-continuous-digest-phase-03-closeout.md](PLAN-continuous-digest-phase-03-closeout.md) | Complete | 8de8b03 through 2a04ccf |
+
+These phases landed directly on the default branch, before this
+repository used pull requests, so `Merged` lists each phase's
+commits or its `first through last` range. The column was
+reconstructed on 2026-11-11 from the commit lists the `Status`
+cells used to carry, with each "this closeout" resolved to the
+commit that wrote it.
+
+Outcomes the `Status` cells used to carry:
+
+- Phase 1. Bail-out criterion PASS at 3.1% overhead (74 refreshes
+  / 434 ms over a ~14 s smoke transcript).
+- Phase 2. Capacity decision: stay V5/L (parent's V10/L default
+  overturned — doesn't fit at 640×480 without overlapping
+  bootloader content); 8 rolling-hash records consume 48 bytes
+  leaving 44 bytes for raw events; CRC chaining math empirically
+  verified.
+- Phase 3. Wire-format spec rewritten for schema v2; DESIGN.md
+  reframed; ARCHITECTURE.md + AGENTS.md cadence updated;
+  parent-plan capacity typos fixed; ryll's decoder verified as a
+  future-work item (no current decoder, so v2 bump is harmless).
 
 ### Phase 1 sketch — refresh cadence + coverage
 

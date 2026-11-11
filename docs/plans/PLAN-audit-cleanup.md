@@ -11,25 +11,25 @@ display-mode-keystrokes milestone) and are summarised in this
 plan rather than reproduced verbatim. The agents' reports
 themselves are not committed — they live in the management
 session that produced this plan, and the audit is reproducible
-by re-running `PUSH-AUDIT.md` against `main`.
+by re-running `PUSH-AUDIT.md` against the default branch.
 
 Also read:
 
-- [`PUSH-AUDIT.md`](../../PUSH-AUDIT.md) — the audit
+- [`PUSH-AUDIT.md`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/PUSH-AUDIT.md) — the audit
   template that this plan responds to. Wave 1 mechanical was
   run by hand because `tools/audit/wave1.sh` does not yet
   exist; that script is itself a possible future-work item but
   is out of scope for this plan.
-- [`AGENTS.md`](../../AGENTS.md) — *Most recently landed*
+- [`AGENTS.md`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/AGENTS.md) — *Most recently landed*
   section, *Design principles to respect*, and the project
   conventions that govern how cleanup work is committed.
-- [`ARCHITECTURE.md`](../../ARCHITECTURE.md) — particularly
+- [`ARCHITECTURE.md`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/ARCHITECTURE.md) — particularly
   the renderer description and the runtime mode-switching
   paragraph added in the previous milestone.
 - The two source files most affected by this plan:
-  [`src/scene.rs`](../../src/scene.rs) (878 lines) and
-  [`src/bootloader.rs`](../../src/bootloader.rs) (693 lines).
-  Plus [`src/renderer/mod.rs`](../../src/renderer/mod.rs)
+  [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) (878 lines) and
+  [`src/bootloader.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/bootloader.rs) (693 lines).
+  Plus [`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs)
   for the bounds-check fix.
 
 Where a question touches `uefi-rs` semantics (especially GOP's
@@ -199,11 +199,18 @@ them drift.
 
 ## Execution
 
-| Phase | Plan | Status |
-|-------|------|--------|
-| 1. Real bug fixes | [PLAN-audit-cleanup-phase-01-bugs.md](PLAN-audit-cleanup-phase-01-bugs.md) | Complete (commits a42af74, 5fd347c, 56b8028, plus this closeout) |
-| 2. Structural dedup | [PLAN-audit-cleanup-phase-02-structural.md](PLAN-audit-cleanup-phase-02-structural.md) | Complete (commits ee8ddd1, c5d84ca, 46baa27, e0734e1, 64a0297, 118c17f, plus this closeout) |
-| 3. Test coverage and release verification | [PLAN-audit-cleanup-phase-03-tests.md](PLAN-audit-cleanup-phase-03-tests.md) | Complete (commits d862ad3, 96720ab, plus this closeout) |
+| Phase | Plan | Status | Merged |
+|-------|------|--------|--------|
+| 1. Real bug fixes | [PLAN-audit-cleanup-phase-01-bugs.md](PLAN-audit-cleanup-phase-01-bugs.md) | Complete | a42af74, 5fd347c, 56b8028, 3385ca1 |
+| 2. Structural dedup | [PLAN-audit-cleanup-phase-02-structural.md](PLAN-audit-cleanup-phase-02-structural.md) | Complete | ee8ddd1, c5d84ca, 46baa27, e0734e1, 64a0297, 118c17f, ca04f75 |
+| 3. Test coverage and release verification | [PLAN-audit-cleanup-phase-03-tests.md](PLAN-audit-cleanup-phase-03-tests.md) | Complete | d862ad3, 96720ab, c2875f1 |
+
+These phases landed directly on the default branch, before this
+repository used pull requests, so `Merged` lists each phase's
+commits or its `first through last` range. The column was
+reconstructed on 2026-11-11 from the commit lists the `Status`
+cells used to carry, with each "this closeout" resolved to the
+commit that wrote it.
 
 ### Phase 1 sketch — real bug fixes
 

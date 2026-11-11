@@ -57,6 +57,16 @@ invokes directly.
 - `./scripts/check-rust.sh fix` — auto-apply `cargo fmt` and
   `cargo clippy --fix`; safe to run on a dirty working tree.
 
+## Before pushing
+
+Run [PUSH-AUDIT.md](PUSH-AUDIT.md) over the accumulated diff against
+`origin/develop`, not over the last commit. It is a two-wave runbook:
+mechanical checks first, then four judgment sub-agents covering code
+quality, tests, documentation and security. Every master plan in
+`docs/plans/` ends with a phase that runs it, so the usual trigger is
+reaching that phase; run it before any other push that is more than a
+typo fix.
+
 ## Where to read first
 
 1. [README.md](README.md) — project framing
@@ -98,133 +108,60 @@ invokes directly.
     to understand the SPICE infrastructure path (`make spice`), the
     port-wait retry logic, and the Ctrl-C exit convention
 
-## Most recently landed
+## Invariants and gotchas
 
-**Visual-digest encoder moved to a shared crate (PLAN-test-harness
-phase 1, step 1h).** The TLV encoder and the `Event` / `Phase` /
-`BootloaderChoice` / `ChannelHashes` types are now sourced from
-[`shakenfist-visual-digest`](https://github.com/shakenfist/visual-digest-rust)
-(pinned to commit `dd9a9348`, `default-features = false` for
-`no_std`). `src/digest.rs` was deleted; `src/event.rs` now
-`pub use`-re-exports the wire-format types so existing
-`crate::event::*` imports stay unchanged. `RingBuffer<256>` stays in
-`src/event.rs`. The encoder's new signature takes `&[&Event]`
-(caller-materialised) instead of a `&RingBuffer<256>`; the
-`refresh_digest` call site collects `ring.iter()` into a short-lived
-`Vec<&Event>`. The QEMU `make digest-payload-smoke` is the load-
-bearing oracle for byte-equivalence — post-migration runs are byte-
-identical to pre-migration baseline runs once timing aligns (same
-frame counter, same framebuffer CRC, same per-channel hashes). The
-13 host-side encoder unit tests (`event_tlv_bytes` regression net +
-CRC chaining) moved to the crate; Sextant's `cargo test` now runs 0
-tests (all that remained were the encoder tests). Production
-`./scripts/check-rust.sh check` and `pre-commit run --all-files` are
-clean. Same wire-format spec at `docs/visual-digest-format.md` in
-the new crate; Sextant's `docs/visual-digest-format.md` is a one-
-line pointer to it (landed in step 1b).
+What the code looks like is in
+[ARCHITECTURE.md](ARCHITECTURE.md); this is the part that will bite a
+session that has not been told.
 
-**Multi-channel rolling hashes (PLAN-continuous-digest phase 2, step
-2c).** `shakenfist-visual-digest` schema version bumped to 2 (this
-landed in Sextant's `src/digest.rs` originally, then moved to the
-crate in step 1h above). Eight TAG_HASH_*
-constants (0x11..=0x18) added, each mirroring a raw-event tag in the
-reserved range. `RECORD_HASH_SIZE = 6` and `NUM_HASH_CHANNELS = 8`
-constants anchor the layout math. `encode` now accepts `&ChannelHashes`
-and emits one 6-byte record per channel (tag + len=4 + CRC32C LE)
-immediately after the 10-byte header. The raw-event budget is reduced
-by 48 bytes (8 × 6) to 44 bytes. `DigestRefresher::refresh` and
-`Scene::refresh_digest` in `src/scene.rs` thread `&ChannelHashes`
-through. `BootloaderScene::refresh` in `src/bootloader.rs` passes
-`&*self.channel_hashes`. `scripts/digest-payload-smoke.sh` now
-requires version == 2, accepts tags 0x11..=0x18, surfaces the eight
-hashes in the success line, and asserts CRC chaining correctness
-(bootloader_timeout == 0, keypress != 0, mode_switch == 0, mode_cycle
-== 0).
+**`cargo test` runs zero tests.** The host-testable encoder tests
+moved to `shakenfist-visual-digest` along with the encoder. What
+stands in for them is `make digest-payload-smoke`, which boots the
+real firmware under OVMF, drives the scripted scene through to
+parking, decodes the QR off a screendump and asserts the TLV. It is
+the load-bearing oracle for any change to the digest, and a green
+`cargo test` says nothing about one.
 
-**Per-line and blink-transition refresh cadence (PLAN-continuous-digest
-phase 1, steps 1c + 1d + 1f).** `play_script` now calls
-`refresh_digest` after every rendered `SceneStep` (Telemetry, Line,
-and Probe), giving per-line QR updates throughout `BOOT_SCRIPT_PRE`
-and `BOOT_SCRIPT_POST`. `blink_until_key` refreshes on every cursor
-glyph transition (byte-wise `glyph != last_glyph`, catching
-Some↔None and Same↔Different variants), which covers both AWAITING
-and PARKED continuously. `run_parked` calls `refresh_digest`
-explicitly after drawing `SYSTEM_ONLINE_TEXT`. The assert in
-`Scene::refresh_digest` and its matching `BootingBootloader`
-repaint-guard were removed (step 1e); `Scene::repaint` now
-refreshes the digest unconditionally after every framebuffer-
-invalidating mode switch. The bootloader sub-state-machine (step
-1f) received a `DigestRefresher` struct that owns the frame counter,
-TSC calibration, and refresh stats; `bootloader::run` takes
-`&mut DigestRefresher` and `&mut ChannelHashes` so the sub-state-
-machine can refresh at 15+ named visible-state-change sites — preamble
-lines, R/I/A prompt renders, nudge, retry-dot animation, blob and
-input prompt draws, paste-echo per character, post-`PasteReceived`
-in both Correct and Wrong branches, success path, and timeout-
-countdown ticks — without holding a `&mut Scene` reference.
+**The wire format lives in another repository.** `Event`, `Phase`,
+`BootloaderChoice`, `ChannelHashes` and the TLV encoder come from
+[`shakenfist-visual-digest`](https://github.com/shakenfist/visual-digest-rust),
+pinned by rev in `Cargo.toml` with `default-features = false` for
+`no_std`. `src/event.rs` `pub use`-re-exports them, so
+`crate::event::*` imports still work, and keeps `RingBuffer<256>`
+local. Changing the format means a change there first, then a rev
+bump here; `docs/visual-digest-format.md` is a pointer to that
+repository's copy of the spec, not a second copy.
 
-**Measurement scaffold (PLAN-continuous-digest phase 1a).** Every
-`Scene::refresh_digest` call is now TSC-bracketed via
-`core::arch::x86_64::_rdtsc` (stable on Rust 1.88 /
-x86-64-unknown-uefi). `Scene` gains a `RefreshStats` field that
-accumulates `count`, `total_ticks`, `max_ticks`, and a 256-entry
-sample ring. `ticks_per_ms` is calibrated once at `Scene::run` entry
-against a known 100 ms `uefi::boot::stall`. The serial drain emits
-one additional trailing line —
-`type=refresh_stats count=<n> total_ms=<n> mean_us=<n> max_us=<n> p99_us=<n>`
-— providing the raw material for the phase-1 bail-out evaluation.
-(Subsequent phase-1 steps 1c, 1d, and 1f added many additional
-refresh sites beyond the three present at this stage; see the cadence
-entry above.)
-
-**Visual on-screen digest** (all three phases complete). A QR Version 5
-/ ECC Low code is rendered in the bottom-right of the framebuffer,
-refreshed at every visible state change (see the phase-1 cadence entry
-above for the full enumeration). It encodes a TLV payload of the
-most-recent events from the same ring buffer that feeds
-`serial::drain`, plus a CRC32C of every framebuffer pixel outside the
-digest region. The wire format is single-sourced in the shared
-`shakenfist-visual-digest` crate (`docs/visual-digest-format.md` in
-that repo); `shakenfist_visual_digest::encode` encodes,
-`src/renderer/mod.rs::Renderer::draw_digest` renders, and
-`scripts/digest-payload-smoke.sh` is the headless decoder reference.
-`make digest-payload-smoke` drives the full scripted scene to
-parking and asserts the decoded TLV. One bug fix during this work:
-the original `DIGEST_PAYLOAD_CAPACITY = 106` constant was labelled
-"V5/Medium" but is actually V5/Low's capacity (V5/M = 84 bytes); the
-encoder configured Medium and panicked on payloads ≥85 bytes, which
-manifested as a firmware hang under the `uefi` crate's panic
-handler. Resolved in commit `d66c7f6` by switching the encoder to
-ECC Low to match the constant.
-
-**Display-mode keystrokes** (all three phases complete). Keys `'1'`–`'6'`
-switch the GOP framebuffer to fixed resolutions (640×480, 800×600,
-1024×768, 1280×720, 1280×1024, 1920×1080); key `'0'` walks every mode
-the firmware exposes with a one-second dwell per step, interruptible by
-any keypress. A bottom-row toast names the applied resolution after each
-switch; a `ModeSwitch` ring-buffer event carries the applied (not
-requested) dimensions queried back from `gop.current_mode_info()`, so a
-future ryll assertion harness has machine-checkable ground truth.
-`ModeCycle` events capture the full cycle walk (count, interrupted flag).
-
-`make spice-ryll` against ryll's `display-mode-ui` branch is the
-canonical acceptance path for both the display-mode affordance and the
-locked-bootloader scene. Mode keys work in Awaiting, Booting, and
-Parked.
+**The digest payload budget is tight and overflowing it panics.** A
+QR Version 5 / ECC Low code holds 106 bytes. Eight rolling-hash
+records take 48 of them, leaving 44 for raw events -- about three per
+frame -- and the encoder deducts the hash block before truncating, so
+hashes always survive and events are what get dropped. Feed the
+encoder more than the configured ECC level can hold and it panics,
+which under the `uefi` crate's panic handler presents as a silent
+firmware hang rather than an error: that is what a mislabelled
+capacity constant cost once already.
 
 **LOAD-BEARING CARVE-OUT for sub-agents touching scene code.**
 `try_handle_mode_key` is not called from `src/bootloader.rs`, and that
 must stay true. The locked-bootloader R/I/A and paste-prompt loops own
-their own key handling; mode keys received there are logged-and-ignored.
-Pressing `'1'` at the `(R)etry, (I)gnore, or (A)bort?` prompt does not
-change the display mode — this is intentional and the bootloader's
-carve-out is load-bearing for correct scene semantics.
+their own key handling; mode keys received there are
+logged-and-ignored. Pressing `'1'` at the
+`(R)etry, (I)gnore, or (A)bort?` prompt does not change the display
+mode. This is intentional and load-bearing for correct scene
+semantics.
 
-A committed reference screenshot lives at
-`docs/images/boot-sequence.png` and can be regenerated via
-`make screenshot`. Style enforcement via pre-commit and
-`scripts/check-rust.sh` is the gate for all contributions; install
-the hooks with `pre-commit install` before your first commit.
+**Clipboard paste needs ryll, not remote-viewer.** `make spice-ryll`
+against ryll's `display-mode-ui` branch is the canonical acceptance
+path for both the display-mode affordance and the locked-bootloader
+scene; remote-viewer cannot deliver paste as keystrokes. Mode keys
+work in Awaiting, Booting and Parked.
+
+**Regenerate the reference screenshot when the visible scene
+changes.** It is committed at `docs/images/boot-sequence.png` and
+`make screenshot` rebuilds it. Install the pre-commit hooks
+(`pre-commit install`) before your first commit: style enforcement
+through `scripts/check-rust.sh` is the gate for all contributions.
 
 ## Design principles to respect
 

@@ -135,8 +135,9 @@ const _: () = {
     assert!(DIGEST_REGION_Y >= 144);
     // Region must fit horizontally at 640 px wide.
     assert!(DIGEST_REGION_X + DIGEST_REGION_PX + MARGIN_X <= 640);
-    // Asserting DIGEST_QR_VERSION is referenced so the constant stays
-    // load-bearing for the encoder constructor in step 1c.
+    // Asserting DIGEST_QR_VERSION keeps the constant referenced, so
+    // it cannot drift out of step with the region geometry above
+    // without this block failing.
     assert!(DIGEST_QR_VERSION == 5);
 };
 
@@ -535,9 +536,7 @@ impl Renderer {
     /// Compute CRC32C of every framebuffer pixel **outside** the
     /// right-anchored digest region.
     ///
-    /// Path A of the phase-2 measurement
-    /// (see `PLAN-visual-digest-phase-02-payload.md` *Outcome*):
-    /// reads the framebuffer back one scanline at a time via
+    /// Reads the framebuffer back one scanline at a time via
     /// `BltOp::VideoToBltBuffer` (the uefi-rs 0.37 spelling of the
     /// UEFI 2.10 `VideoToBuffer` op) and hashes every byte outside
     /// the digest region into a single CRC32C. The digest region
@@ -551,13 +550,16 @@ impl Renderer {
     /// the UEFI stack. One `BltOp::VideoToBltBuffer` call per
     /// scanline avoids any framebuffer-sized allocation.
     ///
-    /// Measured cost under OVMF+QXL at 1024x768: ~21.5M cycles per
-    /// call (median over five runs), ~7 ms at 3 GHz. Phase 2 calls
-    /// this three times per boot from `Scene::refresh_digest`, so
-    /// the steady-state cost is ~21 ms of refresh-pause time per
-    /// boot — concentrated at scene-phase boundaries rather than
-    /// smeared across every paint site, which is the property that
-    /// drove the A-over-B choice.
+    /// This read-back is the whole cost of a digest refresh, and it
+    /// is not cheap: ~21.5M cycles per call under OVMF+QXL at
+    /// 1024x768 (median over five runs), about 7 ms at 3 GHz.
+    /// `Scene::refresh_digest` calls it at every visible state
+    /// change, which measured at 74 refreshes and 434 ms over a
+    /// ~14 s scripted transcript — about 3% of scene wall-clock,
+    /// against a standing budget of 5%. A cheaper refresh would
+    /// have to hash what was drawn rather than reading back what
+    /// is on screen, and would then no longer be checking the
+    /// firmware's own idea of the framebuffer.
     pub(crate) fn crc32c_framebuffer_excluding_digest(&mut self) -> u32 {
         use shakenfist_visual_digest::CRC32C;
 

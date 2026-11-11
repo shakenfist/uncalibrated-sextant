@@ -73,25 +73,25 @@ Before working on this phase, re-read the master plan's
 the locked-bootloader scene*, *On-screen toast vs serial-only
 feedback*, and *Toast row collision with scene content*). Skim:
 
-- [`src/scene.rs`](../../src/scene.rs) — your primary working
+- [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) — your primary working
   surface. Every change in this phase touches this file. Pay
   attention to the `Scene` struct (added `repaint_state` in
   Phase 1), `play_script` (currently calls `stall(POLL_MS)`
   per line; will need polling-aware variant), the runners
   (`run_awaiting`, `run_booting`, `run_parked`), and the
   free `poll_key` helper.
-- [`src/bootloader.rs`](../../src/bootloader.rs) — read-only
+- [`src/bootloader.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/bootloader.rs) — read-only
   for this phase. The bootloader has its own `poll_key`
   sites at lines 277 and 519 and its own `Keypress` event
   pushes. The carve-out is mechanical: do not invoke the
   dispatcher from bootloader.rs. Mode keys arriving during
   the R/I/A or paste-prompt loops continue to be logged as
   Keypress events and otherwise ignored, exactly as today.
-- [`src/renderer/mod.rs`](../../src/renderer/mod.rs) — Phase 1
+- [`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs) — Phase 1
   added `set_mode`, `available_modes`, and `nearest_mode`.
   This phase adds one more accessor (`screen_rows()`) for
   toast positioning. No other renderer changes.
-- [`src/event.rs`](../../src/event.rs) — Phase 1 added
+- [`src/event.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/event.rs) — Phase 1 added
   `ModeSwitch` and `ModeCycle` with `#[allow(dead_code)]`.
   This phase removes those attributes as the dispatcher
   becomes the emitter.

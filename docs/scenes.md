@@ -2,7 +2,7 @@
 
 How to launch Uncalibrated Sextant against a SPICE client, and what
 each scene does. See
-[DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/main/DESIGN.md)
+[DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/DESIGN.md)
 for the channel mapping and two-channel test architecture.
 
 ## Running under SPICE

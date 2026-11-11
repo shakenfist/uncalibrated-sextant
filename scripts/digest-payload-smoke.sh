@@ -6,8 +6,8 @@
 # payload is well-formed:
 #
 #   - magic == "SXDG"
-#   - schema version == 2 (bumped in step 2c to signal rolling-hash
-#     records; schema version 1 is now rejected)
+#   - schema version == 2, which is what signals that the
+#     rolling-hash records are present; version 1 is rejected
 #   - frame counter parses as u32 LE and is >= 3 (one refresh_digest
 #     call inside run_awaiting paints the AWAITING-screen QR;
 #     run_awaiting then blocks until space, after which the
@@ -17,7 +17,7 @@
 #   - record count (u8) parses and is >= 9 (8 per-channel hash records
 #     plus at least one raw event record from the scripted drive)
 #   - each record's type tag is in 0x01..=0x08 (raw events) or
-#     0x11..=0x18 (per-channel rolling-hash records, added in step 2c),
+#     0x11..=0x18 (per-channel rolling-hash records),
 #     with a defensive check that the value length does not run past
 #     the body end
 #   - the eight per-channel hash records are parsed and surfaced in the
@@ -25,7 +25,7 @@
 #   - the trailing 4 bytes parse as a u32 LE CRC32C and are
 #     surfaced in the success line
 #
-# CRC chaining verification (step 2c correctness check):
+# CRC chaining verification:
 #
 #   The scripted scene takes the correct-paste path and never triggers
 #   a BootloaderTimeout event. The chaining-math invariant says:
@@ -263,8 +263,9 @@ except (UnicodeDecodeError, UnicodeEncodeError) as exc:
                      'latin-1 round-trippable: %s\n' % exc)
     sys.exit(1)
 
-# Raw-event tag -> human-readable name. Mirrors src/digest.rs TAG_*
-# constants (0x01..=0x08) and src/event.rs Event variants.
+# Raw-event tag -> human-readable name. Mirrors the TAG_*
+# constants in shakenfist-visual-digest (0x01..=0x08) and the Event
+# variants src/event.rs re-exports from it.
 RAW_TAG_NAMES = {
     0x01: 'Keypress',
     0x02: 'LineRendered',
@@ -276,8 +277,8 @@ RAW_TAG_NAMES = {
     0x08: 'ModeCycle',
 }
 
-# Per-channel rolling-hash tag -> human-readable name. Mirrors
-# src/digest.rs TAG_HASH_* constants (0x11..=0x18), added in step 2c.
+# Per-channel rolling-hash tag -> human-readable name. Mirrors the
+# TAG_HASH_* constants (0x11..=0x18) in shakenfist-visual-digest.
 # Each hash record has tag 0x1N, len=4, and a u32 LE CRC32C value.
 HASH_TAG_NAMES = {
     0x11: 'hash:Keypress',
@@ -301,7 +302,7 @@ if len(payload) < 14:
     )
     sys.exit(1)
 
-# Phase 2d truncation invariant: the encoder must respect
+# Truncation invariant: the encoder must respect
 # DIGEST_PAYLOAD_CAPACITY = 106 bytes (V5/L byte-mode capacity).
 # The scripted scene's bootloader paste flow generates >200 bytes of
 # event records; the encoder's newest-first selection truncates the
@@ -327,13 +328,13 @@ if magic != b'SXDG':
 
 version = payload[4]
 # Schema version 2 is required: version 1 predates the per-channel
-# rolling-hash records (step 2c) and is no longer accepted by this
+# rolling-hash records and is no longer accepted by this
 # smoke. A strict decoder that expects v2 records to be present
 # should refuse v1 payloads.
 if version != 2:
     sys.stderr.write(
         'digest-payload-smoke: schema version mismatch: got %d, expected 2 '
-        '(step 2c bumped from 1 to 2 to signal per-channel hash records)\n'
+        '(version 2 signals the per-channel hash records)\n'
         % version
     )
     sys.exit(1)
@@ -354,8 +355,8 @@ if frame < 3:
     )
     sys.exit(1)
 
-# Step 2c adds 8 per-channel hash records (tags 0x11..=0x18) before
-# the raw event records. The scripted drive additionally pushes at
+# The encoder emits 8 per-channel hash records (tags 0x11..=0x18)
+# before the raw event records. The scripted drive additionally pushes at
 # least one raw event, so the minimum is 9 (8 hash + 1 raw).
 if records < 9:
     sys.stderr.write(
@@ -454,8 +455,9 @@ for idx, (tag, length, value) in enumerate(parsed):
 # ----------------------------------------------------------------
 # CRC chaining verification
 #
-# This is the load-bearing correctness check for the chaining math
-# that step 2b landed but left unverified at the wire level.
+# This is the load-bearing correctness check for the chaining math:
+# nothing else verifies it at the wire level, and a wrong
+# `resume_initial` produces plausible-looking non-zero hashes.
 #
 # Invariant: an unpopulated channel (zero events of that type since
 # boot) must have hash == 0x00000000; a populated channel must have

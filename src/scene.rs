@@ -10,7 +10,8 @@
 // stall between polls so the firmware's event loop is not starved.
 //
 // Timestamps are a monotonic millisecond counter accumulated from stall
-// durations; good enough for Phase 6 serial drain without real RTC.
+// durations; good enough for the serial drain's relative timestamps
+// without a real RTC.
 
 extern crate alloc;
 
@@ -51,8 +52,9 @@ fn read_tsc() -> u64 {
 ///
 /// Accumulated across every call during a boot run and emitted as a
 /// single summary line on the serial drain just before ACPI shutdown.
-/// Provides the raw numbers needed to evaluate the phase-1 bail-out
-/// criterion (total refresh wall-clock ≤ 5% of transcript duration).
+/// Provides the raw numbers for the standing budget on refresh cost:
+/// total refresh wall-clock stays at or under 5% of transcript
+/// duration, or the per-line cadence is not worth keeping.
 pub(crate) struct RefreshStats {
     /// Number of `refresh` calls recorded so far.
     pub(crate) count: u32,
@@ -174,9 +176,11 @@ impl DigestRefresher {
             Ok(len) => renderer.draw_digest(&buf[..len]),
             Err(_) => {
                 // Encoder errors are programmer bugs at this point —
-                // the buffer is sized exactly to capacity. Skip refresh
-                // rather than crash; phase-3 closeout will surface this
-                // via a log.
+                // the buffer is sized exactly to capacity. Skip the
+                // refresh rather than crash: a panic here wedges the
+                // firmware behind the `uefi` panic handler with no
+                // console to report from, and a skipped refresh just
+                // leaves the previous QR on screen.
             }
         }
 
@@ -204,9 +208,9 @@ const CYCLE_DWELL_MS: u64 = 1000;
 const SYSTEM_ONLINE_TEXT: &str = "SYSTEM ONLINE. AWAITING INSTRUCTIONS.";
 
 /// Keystroke → (width, height) request for runtime mode
-/// switches. Matches the master plan's documented binding
-/// table. Key '0' is handled separately by the cycle path
-/// (added in step 2c) and is therefore not in this table.
+/// switches. Matches the binding table documented in
+/// `ARCHITECTURE.md`. Key '0' is handled separately by the cycle
+/// path and is therefore not in this table.
 const MODE_KEYS: &[(char, u32, u32)] = &[
     ('1', 640, 480),
     ('2', 800, 600),
@@ -450,7 +454,7 @@ pub struct Scene {
     /// since boot, including events that have been evicted from the
     /// fixed-capacity ring buffer. Threaded into `bootloader::run`
     /// (alongside `digest_refresher`) so the sub-state-machine's
-    /// pushes also update the hashes. Step 2c will read these fields
+    /// pushes also update the hashes. The encoder reads these fields
     /// to emit the per-channel hash TLV records in the wire payload.
     channel_hashes: ChannelHashes,
 }
@@ -775,9 +779,9 @@ impl Scene {
     /// Repaint everything currently on screen at the renderer's
     /// current dimensions.
     ///
-    /// Phase 1's keystroke-dispatcher hook: after a runtime
-    /// `Renderer::set_mode`, the framebuffer is invalidated (UEFI 2.10
-    /// §12.9), and the dispatcher (Phase 2) calls this to reconstruct
+    /// The keystroke dispatcher's repaint hook: after a runtime
+    /// `Renderer::set_mode` the framebuffer is invalidated (UEFI 2.10
+    /// §12.9), so `try_handle_mode_key` calls this to reconstruct
     /// what the operator was looking at. Read-only from the timeline's
     /// perspective: no `LineRendered` events are pushed, no `clock_ms`
     /// stalls, no recursion into `Scene::run` or the runner methods.
@@ -1016,10 +1020,10 @@ impl Scene {
 
     /// Stall for `total_ms` while polling for keystrokes. Mode
     /// keys are dispatched via `try_handle_mode_key`; non-mode
-    /// keys are discarded (a small behaviour change from the
-    /// pre-Phase-2 binary, where non-mode keys would sit in the
-    /// firmware queue and be drained by `run_parked`'s blink
-    /// loop). Toast TTL is ticked each chunk.
+    /// keys are discarded here rather than left in the firmware
+    /// queue, so they cannot be drained later by `run_parked`'s
+    /// blink loop and read as a keypress the operator made during
+    /// parking. Toast TTL is ticked each chunk.
     ///
     /// The total stall budget is fixed: dispatching a mode key
     /// mid-stall does not reset the budget. Wall-clock time

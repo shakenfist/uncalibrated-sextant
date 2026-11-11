@@ -1,19 +1,19 @@
 # Architecture
 
-The Phase 1 and Phase 2 skeletons are implemented. The crate
+The crate
 `uncalibrated-sextant` targets `x86_64-unknown-uefi` and depends on
 `uefi = "=0.37.0"` (panic handler, alloc, and global allocator
 features enabled). The build runs entirely inside a `rust:1.88-slim`
 Docker image orchestrated by `scripts/build.sh` and a minimal
 `Makefile`; the compiled `.efi` binary lands in a named Docker volume
 (`uncalibrated-sextant-target`). The entry point initialises the UEFI
-helpers, constructs the Phase 4 renderer (see below), runs the current
+helpers, constructs the GOP renderer (see below), runs the current
 test scaffold, blocks on a keypress via `uefi::boot::wait_for_event`,
 then calls `uefi::runtime::reset` with `ResetType::SHUTDOWN` so QEMU
 receives an ACPI shutdown signal and exits cleanly without operator
 intervention.
 
-Phase 2 added a host-native launch path. `scripts/mkesp.sh` runs a
+There is a host-native launch path beside the Docker build. `scripts/mkesp.sh` runs a
 disposable Alpine container (no Dockerfile; `apk add mtools dosfstools`
 on demand) to format a 33 MiB FAT32 image and install the binary as
 `EFI/BOOT/BOOTX64.EFI`. `scripts/qemu.sh` launches `qemu-system-x86_64`
@@ -26,7 +26,7 @@ image to `dist/uncalibrated-sextant.img` and converts it to
 `make release-verify` target boots both artifacts headless and polls
 the serial log for the banner string within a 30-second timeout.
 
-Phase 4 added `src/renderer/`, a GOP-backed text renderer. The
+`src/renderer/` is a GOP-backed text renderer. The
 `Renderer` struct owns a `ScopedProtocol<GraphicsOutput>`, attempts
 to switch to 1024x768 on construction (falling back to the current
 mode if unavailable), and clears the screen to solid black. Every
@@ -41,9 +41,10 @@ the spleen 8x16 font (BSD-2-Clause; see `LICENSES/FONT_SPLEEN.txt`)
 as a `[[u8; 16]; 128]` ASCII table generated once by
 `scripts/vendor-font.py` and committed for reproducibility.
 
-Phase 5 added the scene state machine (`src/scene.rs`), event ring
-buffer (`src/event.rs`), cursor glitch module (`src/cursor.rs`), and
-logo pipeline (`src/logo.rs`, `scripts/vendor-logo.py`). `Scene`
+The scene state machine is `src/scene.rs`, with the event ring
+buffer in `src/event.rs`, the cursor glitch module in `src/cursor.rs`,
+and the logo pipeline in `src/logo.rs` and
+`scripts/vendor-logo.py`. `Scene`
 drives three phases — Awaiting, Booting, Parked — in sequence.
 Awaiting and Parked blink a cursor and unblock on the first keypress.
 Booting walks a `static BOOT_SCRIPT` of `SceneStep::Telemetry` and
@@ -134,9 +135,9 @@ The narrator-leak parentheticals described in DESIGN.md's
 default boot sequence. This is deliberate: they are deferred pending
 a diagnostic-mode mechanism that will gate them in a future phase.
 
-The locked-bootloader scene (Phase 2 of the locked-bootloader
-milestone) added `src/bootloader.rs`, a self-contained sub-state-
-machine that runs mid-`Scene::run_booting`. `BOOT_SCRIPT` is split
+The locked-bootloader scene is `src/bootloader.rs`, a
+self-contained sub-state-machine that runs
+mid-`Scene::run_booting`. `BOOT_SCRIPT` is split
 into `BOOT_SCRIPT_PRE` (language probes through `SENSORIUM: nominal`)
 and `BOOT_SCRIPT_POST` (the `EMERGENCY SAFE BOOT COMPLETE` line).
 `run_booting` walks `BOOT_SCRIPT_PRE`, then calls `bootloader::run`
@@ -233,7 +234,7 @@ paste-prompt loops are logged-and-ignored; the `BootingBootloader`
 repaint variant is therefore unreachable in production but modelled for
 totality with a documented PRE-only fallback.
 
-Phase 6 added `src/serial.rs` — two Serial-protocol writers sharing a
+`src/serial.rs` holds two Serial-protocol writers sharing a
 `with_serial` helper that briefly opens
 `uefi::proto::console::serial::Serial` via
 `open_protocol_exclusive`, hands it to a closure, and drops the
@@ -250,8 +251,8 @@ If no Serial protocol is present (e.g. QEMU invoked without a
 `-serial` backend), both writers are silent no-ops and the scene
 still shuts down cleanly.
 
-Phase 6 also added `scripts/screenshot.sh` and a `make screenshot`
-target. The script boots the ESP image with `-display none` and a
+`scripts/screenshot.sh` backs the `make screenshot` target. The
+script boots the ESP image with `-display none` and a
 QMP Unix socket, waits for the startup banner in the serial log,
 sends a synthetic space keypress via QMP `send-key` to advance
 AWAITING into the boot sequence, waits for the parking screen to
@@ -262,13 +263,12 @@ confirm `type=` lines are present in the serial log — the script
 fails if the drain produced nothing, making it a full end-to-end
 smoke test.
 
-The visual half of the two-channel test architecture landed via
-PLAN-visual-digest (phases 1–3). `Renderer::draw_digest` renders a
+The visual half of the two-channel test architecture is
+implemented. `Renderer::draw_digest` renders a
 QR Version 5 / ECC Low code into the bottom-right of the
 framebuffer; `Scene::refresh_digest` rebuilds the payload from the
 ring buffer (now via `shakenfist_visual_digest::encode`) and re-
-encodes the QR. The refresh cadence —
-substantially expanded in PLAN-continuous-digest phase 1 — is now:
+encodes the QR. The refresh cadence is:
 **per painted line** in the boot transcript (`play_script` calls
 `refresh_digest` after every `SceneStep` render, covering both
 `BOOT_SCRIPT_PRE` and `BOOT_SCRIPT_POST`); **on every cursor blink
@@ -276,9 +276,10 @@ transition** in `blink_until_key` (glyph-state comparison, firing
 when `glyph != last_glyph`, which covers both AWAITING and PARKED);
 **explicitly after drawing the `SYSTEM_ONLINE_TEXT` line** in
 `run_parked`; and **inside `Scene::repaint`** after any
-framebuffer-invalidating mode switch (unconditional — the pre-phase-1
-`BootingBootloader` carve-out assert in `Scene::refresh_digest` and
-its matching guard were removed in step 1e). The locked-bootloader
+framebuffer-invalidating mode switch (unconditional: there is no
+carve-out for the bootloader sub-state-machine, so the
+`BootingBootloader` repaint variant refreshes like any other). The
+locked-bootloader
 sub-state-machine holds its own refresh points: `bootloader::run`
 takes `&mut DigestRefresher` and `&mut ChannelHashes` so the
 sub-state-machine (a `BootloaderScene` helper struct) can refresh at
@@ -292,8 +293,7 @@ framebuffer pixels) is documented in
 [docs/visual-digest-format.md](docs/visual-digest-format.md);
 `make digest-payload-smoke` is the headless decoder reference.
 
-**Multi-channel rolling hashes (PLAN-continuous-digest phase 2, steps
-2b–2c).** A `ChannelHashes` struct (from `shakenfist-visual-digest`,
+**Multi-channel rolling hashes.** A `ChannelHashes` struct (from `shakenfist-visual-digest`,
 re-imported into `Scene`) carries eight `u32` CRC32C accumulators —
 one per `Event` variant — updated on every `push_event` call in
 `Scene` and `BootloaderScene`. The CRC chaining
@@ -304,12 +304,13 @@ records (0x11..=0x18, matching the raw tag numbers plus 0x10) to the
 TLV payload immediately after the 10-byte header; each is 6 bytes
 (tag + len=4 + CRC32C LE). The 48-byte hash block is deducted from
 the raw-event budget before truncation, so hash records always survive.
-`DIGEST_SCHEMA_VERSION` was bumped from 1 to 2 in step 2c to signal
-the new tag conventions. Capacity stays V5/L (106 bytes) per the step
-2a capacity study, leaving 44 bytes for raw events (~3 records per
-frame).
+`DIGEST_SCHEMA_VERSION` is 2, which is what tells a decoder to
+expect the hash records. Capacity stays V5/L (106 bytes) rather than
+V10/L, which does not fit at 640x480 without overlapping bootloader
+content; that leaves 44 bytes for raw events, about three records per
+frame.
 
-**Measurement scaffold (PLAN-continuous-digest phase 1a).** Every
+**Refresh cost measurement.** Every
 call to `Scene::refresh_digest` is bracketed by reads of the x86
 TSC (`core::arch::x86_64::_rdtsc`, stable on Rust 1.88 / the
 x86-64-unknown-uefi target). A `RefreshStats` struct on `Scene`
@@ -323,10 +324,9 @@ the sample ring, and emits one final CRLF-terminated line:
 `type=refresh_stats count=<n> total_ms=<n> mean_us=<n> max_us=<n>
 p99_us=<n>`. This line is after all per-event lines and before ACPI
 shutdown; it is not part of the QR TLV payload and does not affect
-`make digest-payload-smoke`. (Subsequent phase-1 steps — 1c, 1d,
-and 1f — added many additional refresh sites; the three sites present
-at phase 1a are now a small subset of the full cadence described
-above.)
+`make digest-payload-smoke`. It accounts for every refresh site in
+the cadence above, which is how the per-line cadence was measured at
+about 3% of scene wall-clock rather than assumed to be cheap.
 
 The remaining components still to be built:
 
@@ -339,9 +339,32 @@ The remaining components still to be built:
   currently requires a keypress only.
 
 Style enforcement is declared in `.pre-commit-config.yaml` and
-executed by `scripts/check-rust.sh`, which reuses the Phase 1 Docker
+executed by `scripts/check-rust.sh`, which reuses the Docker
 build image (`uncalibrated-sextant-build:1.88.0`) so Rust checks
-never require a host toolchain. The GitHub Actions workflow at
-`.github/workflows/pre-commit.yml` runs all non-Rust hooks (trailing
-whitespace, YAML, shellcheck, secret scanning) on every push and pull
-request; the `rust-check` hook is skipped there and enforced locally.
+never require a host toolchain.
+
+The GitHub Actions workflows, all on self-hosted runners:
+
+- `pre-commit.yml` is the CI gate. It runs every hook in
+  `.pre-commit-config.yaml` except `rust-check`, which needs the
+  Docker build image and so stays a local-only hook, and it carries
+  the `automated_reviewer` job that calls the shared
+  `pr-auto-review.yml` in
+  [shakenfist/actions](https://github.com/shakenfist/actions) once
+  the hooks pass. It is a lint gate only: nothing in CI builds the
+  firmware or runs clippy, and the QEMU oracles
+  (`make digest-payload-smoke`, `scripts/test.sh`) run only on a
+  developer's machine.
+- `secret-scan.yml` runs gitleaks over the branch's whole history, on
+  pull requests and on pushes to `develop`, with no path filter.
+- `codeql-analysis.yml` scans the Python scripts and the workflow
+  definitions. It does not scan the firmware; the workflow explains
+  why at length.
+- `pr-re-review.yml` and `pr-retest.yml` are the comment-triggered
+  developer workflows ("please re-review", "please retest").
+  `pr-retest.yml` dispatches whatever the `RETEST_WORKFLOW`
+  repository variable names, which here is `pre-commit.yml`.
+- `renovate.yml` runs Renovate hourly against this repository,
+  configured by `renovate.json`.
+- `export-repo-config.yml` exports the repository's own GitHub
+  settings daily and opens a pull request when they have changed.

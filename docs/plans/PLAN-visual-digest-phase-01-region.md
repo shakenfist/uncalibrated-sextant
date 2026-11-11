@@ -112,20 +112,20 @@ Before working on this phase, re-read the master plan's
 to (QR-vs-text, crate choice, region location, host decode
 tooling). Skim:
 
-- [`src/renderer/mod.rs`](../../src/renderer/mod.rs) — the
+- [`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs) — the
   `Renderer` struct and its existing per-glyph BltOp call
   sites (`blit_glyph_bytes`, `draw_text_bitmap`). The new
   `draw_digest` method goes here.
-- [`src/scene.rs`](../../src/scene.rs) — `draw_chrome` for the
+- [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) — `draw_chrome` for the
   logo placement, `MODE_KEYS` for the supported GOP modes,
   `run_awaiting` and `run_parked` for parking-screen patterns.
-- [`src/logo.rs`](../../src/logo.rs) — confirms
+- [`src/logo.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/logo.rs) — confirms
   `LOGO_WIDTH = LOGO_HEIGHT = 128` placed at top-right.
-- [`Cargo.toml`](../../Cargo.toml) — current
+- [`Cargo.toml`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/Cargo.toml) — current
   `uefi = "=0.37.0"` pin with `alloc` + `global_allocator`.
   Phase 1 adds exactly one new dependency.
-- [`Makefile`](../../Makefile) and
-  [`scripts/screenshot.sh`](../../scripts/screenshot.sh) —
+- [`Makefile`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/Makefile) and
+  [`scripts/screenshot.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/screenshot.sh) —
   the QMP `screendump` path that the smoke target re-uses.
 
 External references:

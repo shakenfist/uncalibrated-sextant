@@ -12,6 +12,19 @@ qrcodegen-no-heap = "1.8.1"
 crc = { version = "3", default-features = false }
 shakenfist-visual-digest = { git = "https://github.com/shakenfist/visual-digest-rust", rev = "dd9a9348f6a9cb286988b5c8498371399471d0cd", default-features = false }
 
+# unwrap() turns a recoverable error into a panic, and this firmware
+# reads framebuffer geometry, SPICE input and host-supplied payloads
+# from outside itself; a panic there is a wedged guest with no console
+# to report from. warn here plus -D warnings in scripts/check-rust.sh
+# means a refactor is not blocked mid-edit while the local pre-commit
+# hook refuses a new production unwrap (CI does not run clippy; see
+# .github/workflows/pre-commit.yml). clippy.toml exempts test code.
+# The lint does not cover expect(), which panics just the same: the
+# remaining expect() calls in src/main.rs and src/renderer/mod.rs are
+# panic paths this lint does not police.
+[lints.clippy]
+unwrap_used = "warn"
+
 [profile.release]
 panic = "abort"
 lto = true

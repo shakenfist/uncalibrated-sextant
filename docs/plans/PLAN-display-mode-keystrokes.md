@@ -3,17 +3,17 @@
 ## Prompt
 
 Before responding to questions or discussion points in this
-document, read [DESIGN.md](../../DESIGN.md) (especially the
+document, read [DESIGN.md](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/DESIGN.md) (especially the
 *SPICE channel mapping* table, where the *Display channel* rows
 live), [docs/spice-test-inventory.md](../spice-test-inventory.md)
 (especially the *Display channel* section), the renderer at
-[`src/renderer/mod.rs`](../../src/renderer/mod.rs), the scene
+[`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs), the scene
 runners and `poll_key()` helper in
-[`src/scene.rs`](../../src/scene.rs), the existing keypress
+[`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs), the existing keypress
 handling pattern in
-[`src/bootloader.rs`](../../src/bootloader.rs) (around lines 282
+[`src/bootloader.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/bootloader.rs) (around lines 282
 and 523), and the ring-buffer event enum in
-[`src/event.rs`](../../src/event.rs). Ground every design choice
+[`src/event.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/event.rs). Ground every design choice
 in what the code does today; do not speculate when you can read
 instead.
 
@@ -68,13 +68,13 @@ Cross-repo references, in order of likely usefulness:
 
 The first-playable milestone (commits `862b638` → `a30bc38`)
 landed a UEFI binary that picks a single GOP mode at boot —
-[`src/renderer/mod.rs:52-72`](../../src/renderer/mod.rs)
+[`src/renderer/mod.rs:52-72`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs)
 enumerates `gop.modes()`, looks for `(1024, 768)`, calls
 `gop.set_mode(&mode)`, and caches `width` / `height` on the
 `Renderer`. Once set, the mode never changes for the life of
 the binary. The subsequent boot-sequence text *narrates* a
 mode probe (`640x480x8 ... OK` etc. at
-[`src/scene.rs:127-130`](../../src/scene.rs)) but does not
+[`src/scene.rs:127-130`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs)) but does not
 actually retune GOP — it is diegetic flavour.
 
 Triaging the ryll `display-mode-ui` fix exposed a testing
@@ -300,11 +300,18 @@ them drift.
 
 ## Execution
 
-| Phase | Plan | Status |
-|-------|------|--------|
-| 1. Renderer `set_mode` + redraw hook + ring-buffer events | [PLAN-display-mode-keystrokes-phase-01-renderer.md](PLAN-display-mode-keystrokes-phase-01-renderer.md) | Complete (commits f1acc97, 7c0f50b, 4dd4b03, 629bbad, plus this closeout) |
-| 2. Keystroke handlers in awaiting / booting / parked + cycle + on-screen toast | [PLAN-display-mode-keystrokes-phase-02-keystrokes.md](PLAN-display-mode-keystrokes-phase-02-keystrokes.md) | Complete (commits bf2c11f, df35129, d6af190, 77480cf, plus this closeout) |
-| 3. Iteration against ryll `display-mode-ui`, documentation, inventory closeout | [PLAN-display-mode-keystrokes-phase-03-docs.md](PLAN-display-mode-keystrokes-phase-03-docs.md) | Complete (commits 1c06122, d29187d, plus this closeout) |
+| Phase | Plan | Status | Merged |
+|-------|------|--------|--------|
+| 1. Renderer `set_mode` + redraw hook + ring-buffer events | [PLAN-display-mode-keystrokes-phase-01-renderer.md](PLAN-display-mode-keystrokes-phase-01-renderer.md) | Complete | f1acc97, 7c0f50b, 4dd4b03, 629bbad, a84df16 |
+| 2. Keystroke handlers in awaiting / booting / parked + cycle + on-screen toast | [PLAN-display-mode-keystrokes-phase-02-keystrokes.md](PLAN-display-mode-keystrokes-phase-02-keystrokes.md) | Complete | bf2c11f, df35129, d6af190, 77480cf, 1b1b446 |
+| 3. Iteration against ryll `display-mode-ui`, documentation, inventory closeout | [PLAN-display-mode-keystrokes-phase-03-docs.md](PLAN-display-mode-keystrokes-phase-03-docs.md) | Complete | 1c06122, d29187d, 8255685 |
+
+These phases landed directly on the default branch, before this
+repository used pull requests, so `Merged` lists each phase's
+commits or its `first through last` range. The column was
+reconstructed on 2026-11-11 from the commit lists the `Status`
+cells used to carry, with each "this closeout" resolved to the
+commit that wrote it.
 
 ### Phase 1 sketch — Renderer `set_mode`, redraw hook, ring-buffer events
 

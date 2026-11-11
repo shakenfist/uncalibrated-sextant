@@ -126,14 +126,21 @@ resolved by the phase in which they become relevant.
 
 ## Execution
 
-| Phase | Plan | Status |
-|-------|------|--------|
-| 1. Cargo / `no_std` UEFI skeleton and Simple Text Output "hello" | PLAN-first-playable-phase-01-skeleton.md | Complete (commits 7712239, 8a0442d) |
-| 2. Build tooling and `make qemu` | PLAN-first-playable-phase-02-build.md | Complete (commits 9ee4c21, 98705cb, d3bc0ca, da7f64d) |
-| 3. Pre-commit, style, and minimal CI | PLAN-first-playable-phase-03-style.md | Complete (commits b5cebc5, f2c4ad3, 4097c5e) |
-| 4. Renderer foundation — framebuffer, font, per-glyph blit, palette | PLAN-first-playable-phase-04-renderer.md | Complete (commits eeb6503, 3958fec) |
-| 5. Boot sequence scene — AWAITING, telemetry, narrator leaks, scruff | PLAN-first-playable-phase-05-boot-sequence.md | Complete (commits e46dcf7, d381891) |
-| 6. Packaging, screenshot, and documentation polish | PLAN-first-playable-phase-06-packaging.md | Complete (commits 8d0fbb1, 3880b09, 510d443) |
+| Phase | Plan | Status | Merged |
+|-------|------|--------|--------|
+| 1. Cargo / `no_std` UEFI skeleton and Simple Text Output "hello" | PLAN-first-playable-phase-01-skeleton.md | Complete | 7712239, 8a0442d |
+| 2. Build tooling and `make qemu` | PLAN-first-playable-phase-02-build.md | Complete | 9ee4c21, 98705cb, d3bc0ca, da7f64d |
+| 3. Pre-commit, style, and minimal CI | PLAN-first-playable-phase-03-style.md | Complete | b5cebc5, f2c4ad3, 4097c5e |
+| 4. Renderer foundation — framebuffer, font, per-glyph blit, palette | PLAN-first-playable-phase-04-renderer.md | Complete | eeb6503, 3958fec |
+| 5. Boot sequence scene — AWAITING, telemetry, narrator leaks, scruff | PLAN-first-playable-phase-05-boot-sequence.md | Complete | e46dcf7, d381891 |
+| 6. Packaging, screenshot, and documentation polish | PLAN-first-playable-phase-06-packaging.md | Complete | 8d0fbb1, 3880b09, 510d443 |
+
+These phases landed directly on the default branch, before this
+repository used pull requests, so `Merged` lists each phase's
+commits or its `first through last` range. The column was
+reconstructed on 2026-11-11 from the commit lists the `Status`
+cells used to carry, with each "this closeout" resolved to the
+commit that wrote it.
 
 ### Phase 1 sketch — Cargo `no_std` UEFI skeleton
 

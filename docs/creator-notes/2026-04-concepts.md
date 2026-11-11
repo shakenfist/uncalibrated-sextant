@@ -36,4 +36,4 @@ Not a hack, and not merely derivative, though some threads here do touch well-wo
 
 **To the two direct questions.** (1) Overly derivative — no, provided voice stays specific. (2) Worth folding in? — the existential extension of self-testing, yes (it strengthens what we have). The Kerbside/distance scene, yes (practical *and* meaningful). The explicit LLM-treatment thread only as deep subtext a careful reader might *discover*, never announce. The Voyager frame works as shape — isolated machine, degraded hardware, mission continues — rather than as literal backstory.
 
-The Phase 1 plan is not affected by any of this — these are design-doc and later-milestone concerns, not blockers.
+None of this affects the first-playable skeleton work already planned — these are design-doc and later-milestone concerns, not blockers.

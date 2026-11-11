@@ -72,16 +72,16 @@ refactors are byte-identical at the rendering level.
 Re-read the master plan's *Phase 2 sketch* and *Open
 questions*. Skim:
 
-- [`src/scene.rs`](../../src/scene.rs) — `run_awaiting`
+- [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) — `run_awaiting`
   (around lines 340–390), `run_parked` (around lines
   810–880), `try_handle_mode_key` and `cycle_modes`
   (around lines 776 and 675), and `RepaintState` (around
   line 220).
-- [`src/bootloader.rs`](../../src/bootloader.rs) — only
+- [`src/bootloader.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/bootloader.rs) — only
   for the duplicated `PACE_LINE_MS` constant near the top
   and the `run_timeout` countdown logic. The bootloader's
   input loops are **not** touched by this phase.
-- [`src/renderer/mod.rs`](../../src/renderer/mod.rs) —
+- [`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs) —
   `draw_glyph` and `draw_cursor_glyph` for the
   `blit_glyph_bytes` extraction.
 

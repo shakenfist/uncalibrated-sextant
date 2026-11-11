@@ -76,26 +76,26 @@ Before working on this phase, re-read the master plan's
 `run_booting` redraw policy, and the "query back from GOP, do
 not trust the request" rule). Skim:
 
-- [`src/renderer/mod.rs`](../../src/renderer/mod.rs) — current
+- [`src/renderer/mod.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/renderer/mod.rs) — current
   one-shot `(1024, 768)` selection in `Renderer::new`. Phase 1
   generalises that into a reusable `set_mode` plus a pure
   nearest-mode helper that the boot-time path itself starts
   using.
-- [`src/event.rs`](../../src/event.rs) — existing `Event`
+- [`src/event.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/event.rs) — existing `Event`
   variants and the `BootloaderChoice` precedent for "tag()
   returns a stable lowercase string for the serial drain."
-- [`src/serial.rs`](../../src/serial.rs) —
+- [`src/serial.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/serial.rs) —
   `with_serial`, `write_startup_banner`, and the per-variant
   formatting in `drain`. Phase 1 adds one more emitter and one
   more variant to the formatter.
-- [`src/scene.rs`](../../src/scene.rs) — the `Scene` struct,
+- [`src/scene.rs`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/src/scene.rs) — the `Scene` struct,
   `play_script`, `run_awaiting`, `run_booting`, `run_parked`.
   Phase 1 adds a `RepaintState` field that scene runners
   update as they play, and a `Scene::repaint` method that
   reads it. The method has no callers in this phase; Phase 2
   wires the dispatcher.
-- [`scripts/qemu.sh`](../../scripts/qemu.sh) and
-  [`scripts/spice-ryll.sh`](../../scripts/spice-ryll.sh) for
+- [`scripts/qemu.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/qemu.sh) and
+  [`scripts/spice-ryll.sh`](https://github.com/shakenfist/uncalibrated-sextant/blob/develop/scripts/spice-ryll.sh) for
   the smoke-test paths used at the end of the phase.
 
 Where the UEFI spec or `uefi-rs` semantics matter, read first:

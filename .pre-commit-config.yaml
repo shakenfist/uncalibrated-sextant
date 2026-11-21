@@ -35,7 +35,7 @@ repos:
   # lints them here, and .github/workflows/pre-commit.yml runs every
   # hook in this file, so --no-verify does not get past it.
   - repo: https://github.com/stbenjam/skillsaw
-    rev: v0.22.0
+    rev: v0.23.0
     hooks:
       - id: skillsaw
 

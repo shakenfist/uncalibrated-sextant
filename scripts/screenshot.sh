@@ -36,10 +36,19 @@ mkdir -p "$(dirname "$OUTPUT_PNG")" "$REPO_ROOT/dist"
 "$REPO_ROOT/scripts/mkesp.sh"
 
 SERIAL_LOG="$REPO_ROOT/dist/screenshot-serial.log"
-QMP_SOCK="$REPO_ROOT/dist/screenshot-qmp.sock"
 VARS_COPY="$REPO_ROOT/dist/screenshot-OVMF_VARS.fd"
 
-rm -f "$SERIAL_LOG" "$QMP_SOCK"
+# A short-path temp directory, not dist/: the kernel caps a UNIX
+# socket path at 108 bytes, and dist/ crosses that in any checkout
+# whose own path runs past about 70 characters -- a worktree beside
+# the clone is enough. QEMU then exits before it binds the socket,
+# and the banner wait below reports a timeout, which says nothing
+# about the cause. The socket is ephemeral, so nothing wants it in
+# the tree.
+QMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ucs-qmp.XXXXXX")"
+QMP_SOCK="$QMP_DIR/qmp.sock"
+
+rm -f "$SERIAL_LOG"
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$VARS_COPY"
 
 qemu-system-x86_64 \
@@ -58,7 +67,8 @@ QEMU_PID=$!
 cleanup() {
     kill "$QEMU_PID" 2>/dev/null || true
     wait "$QEMU_PID" 2>/dev/null || true
-    rm -f "$VARS_COPY" "$QMP_SOCK"
+    rm -f "$VARS_COPY"
+    rm -rf "$QMP_DIR"
 }
 trap cleanup EXIT
 

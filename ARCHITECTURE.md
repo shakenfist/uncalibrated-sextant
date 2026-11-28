@@ -364,7 +364,15 @@ The GitHub Actions workflows, all on self-hosted runners:
   developer workflows ("please re-review", "please retest").
   `pr-retest.yml` dispatches whatever the `RETEST_WORKFLOW`
   repository variable names, which here is `pre-commit.yml`.
-- `renovate.yml` runs Renovate hourly against this repository,
-  configured by `renovate.json`.
 - `export-repo-config.yml` exports the repository's own GitHub
   settings daily and opens a pull request when they have changed.
+
+Dependency updates arrive from outside the repository. Renovate runs
+from a single fleet runner in
+[shakenfist/development](https://github.com/shakenfist/development)
+which works over every managed repository in one pass, so there is no
+Renovate workflow here -- a per-repository copy would race it.
+`renovate.json` holds nothing but an `extends` of the fleet preset:
+the author, assignees, cadence, `minimumReleaseAge`, dependency
+dashboard and the `pre-commit` manager all live in that preset, so a
+policy change reaches the fleet once rather than per repository.

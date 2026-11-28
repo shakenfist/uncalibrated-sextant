@@ -747,9 +747,8 @@ impl Scene {
         start_row: usize,
         count: usize,
     ) {
-        let mut row = start_row;
         let limit = count.min(script.len());
-        for step in &script[..limit] {
+        for (row, step) in (start_row..).zip(&script[..limit]) {
             match step {
                 SceneStep::Telemetry { label, status } => {
                     renderer.draw_telemetry_line(label, status, row);
@@ -772,7 +771,6 @@ impl Scene {
                     );
                 }
             }
-            row += 1;
         }
     }
 

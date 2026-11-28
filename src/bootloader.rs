@@ -55,8 +55,10 @@ const ENCODED_BLOB: &str = "c2V4dGFudHtIRUxMT19PUEVSQVRPUn0=";
 /// Per-dot delay during the retry animation (ms).
 const RETRY_SLEEP_MS: u64 = 200;
 
-/// Number of dots in the retry-animation dot leader.
-const RETRY_DOT_COUNT: u32 = 8;
+/// Number of dots in the retry-animation dot leader. `usize`
+/// because it is an element count: it bounds the dot-column
+/// iterator in `run_retry_animation`.
+const RETRY_DOT_COUNT: usize = 8;
 
 /// After this many retry presses, render the diegetic nudge below the
 /// prompt and leave it sticky for the rest of the prompt's lifetime.
@@ -418,11 +420,9 @@ impl<'a> BootloaderScene<'a> {
         const RETRYING: &str = "Retrying decryption";
         self.renderer.draw_text_at(RETRYING, 0, self.prompt_row);
 
-        let mut col = RETRYING.len();
-        for _ in 0..RETRY_DOT_COUNT {
+        for col in (RETRYING.len()..).take(RETRY_DOT_COUNT) {
             stall(self.clock_ms, RETRY_SLEEP_MS);
             self.renderer.draw_glyph('.', col, self.prompt_row);
-            col += 1;
             // The dots ARE the visible state change — refresh per
             // dot so a screenshot mid-animation sees the in-progress
             // dot leader in the QR.

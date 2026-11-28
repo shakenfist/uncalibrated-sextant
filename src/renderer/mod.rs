@@ -125,7 +125,7 @@ const DIGEST_QR_BUFFER_LEN: usize = DIGEST_QR_VERSION_V.buffer_len();
 
 const _: () = {
     // Region pixel width must be a whole number of modules.
-    assert!(DIGEST_REGION_PX % DIGEST_MODULE_PX == 0);
+    assert!(DIGEST_REGION_PX.is_multiple_of(DIGEST_MODULE_PX));
     // Region must exactly span (MODULES + 2 * BORDER) modules.
     assert!(DIGEST_REGION_PX == (DIGEST_QR_MODULES + 2 * DIGEST_QR_BORDER) * DIGEST_MODULE_PX);
     // Region must not overlap the bottom-row toast at 640x480.
